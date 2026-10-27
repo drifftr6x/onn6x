@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontFamily
@@ -248,7 +249,7 @@ fun HomeScreen(
             }
         }
 
-        if (state.idle) Screensaver(settings.wallpaperMinutes, state.weather)
+        if (state.idle) Screensaver(settings.wallpaperMinutes, state.weather, if (settings.idleBackdrops) heroes else emptyList())
 
         menu?.let { target ->
             val pkg = target.app.packageName
@@ -725,7 +726,7 @@ private fun ClockBlock(weather: WeatherState?) {
 }
 
 @Composable
-private fun Screensaver(wallpaperMinutes: Int, weather: WeatherState?) {
+private fun Screensaver(wallpaperMinutes: Int, weather: WeatherState?, backdrops: List<TrendingTitle>) {
     val timeFormat = remember { DateFormat.getTimeInstance(DateFormat.SHORT) }
     val dateFormat = remember { SimpleDateFormat("EEEE, MMMM d", Locale.getDefault()) }
     val now = rememberNow()
@@ -754,7 +755,7 @@ private fun Screensaver(wallpaperMinutes: Int, weather: WeatherState?) {
                 ),
             ),
     ) {
-        WallpaperBackground(wallpaperMinutes)
+        if (backdrops.isEmpty()) WallpaperBackground(wallpaperMinutes) else BackdropShow(backdrops)
         Box(
             Modifier
                 .fillMaxWidth()
@@ -784,6 +785,52 @@ private fun Screensaver(wallpaperMinutes: Int, weather: WeatherState?) {
                     )
                 }
             }
+        }
+    }
+}
+
+/** Idle backdrops: a new movie or show every 20 seconds, crossfading while slowly zooming in. */
+@Composable
+private fun BackdropShow(titles: List<TrendingTitle>) {
+    var index by remember { mutableStateOf(0) }
+    LaunchedEffect(titles.size) {
+        while (titles.isNotEmpty()) {
+            delay(20_000)
+            index = (index + 1) % titles.size
+        }
+    }
+    Crossfade(
+        targetState = titles[index % titles.size],
+        animationSpec = tween(2_000),
+        label = "idlebackdrop",
+    ) { title ->
+        val zoom = rememberInfiniteTransition(label = "zoom")
+        val scale by zoom.animateFloat(
+            initialValue = 1f,
+            targetValue = 1.12f,
+            animationSpec = infiniteRepeatable(tween(22_000, easing = LinearEasing), RepeatMode.Restart),
+            label = "scale",
+        )
+        Box(Modifier.fillMaxSize()) {
+            val backdrop = title.backdrop
+            if (backdrop != null) {
+                Image(
+                    bitmap = backdrop,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { scaleX = scale; scaleY = scale },
+                )
+            }
+            Text(
+                text = title.name + if (title.year.isNotBlank()) " (${title.year})" else "",
+                color = Color(0xCCFFFFFF),
+                fontSize = 16.sp,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 56.dp, bottom = 48.dp),
+            )
         }
     }
 }

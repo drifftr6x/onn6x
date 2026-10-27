@@ -6,6 +6,10 @@
 
 A hackable Android TV home screen for the Onn 4K Pro, in Kotlin with Compose for TV.
 
+<p align="center">
+  <img src="docs/onn-4k-pro.png" alt="Onn 4K Pro streaming device and remote" width="360">
+</p>
+
 **Status:** builds and runs on an Onn 4K Pro (Google TV, Android 14). Built for one box and one owner, so treat it as a starting point, not a polished release.
 
 ## Features
@@ -113,6 +117,7 @@ Needs a free TMDB key: make an account at themoviedb.org, then Settings > API, a
 - **Taste test:** Settings > "Take the taste test...". Three rounds of six posters; pick the ones you'd watch and the launcher learns your favorite genres and switches to My tastes.
 - **Details dialog:** overview, rating and where it streams in your region, with a button for each matching app you have installed. Netflix, YouTube and Prime Video also get "Search for it in ..." (a search link that may stop working when those apps change; if an app refuses it, the launcher just opens the app).
 - **Continue watching:** the last six titles you opened from the details dialog or played in another app.
+- **Screensaver backdrops:** with a TMDB key, the idle screensaver crossfades through the trending backdrops with a slow zoom, the title in the corner and the drifting clock and weather on top. Turn it off in Settings > "Screensaver backdrops".
 - **Hero style:** Settings > "Hero style" switches between the banner and a full-screen "For You" look, where the backdrop fills the whole screen behind your rows.
 - **My list:** open a title and choose "Add to my list". Saved titles get their own row and stay until you remove them.
 - **What's playing:** a bar at the top shows what Netflix, YouTube, Plex and similar apps are playing; select it to jump back. While something plays, the launcher also looks the title up on TMDB and adds it to Continue watching. It needs a one-time grant from your PC: `adb shell cmd notification allow_listener com.example.onnlauncher/com.example.onnlauncher.NowPlayingService`. It reads media sessions only, never notification text.

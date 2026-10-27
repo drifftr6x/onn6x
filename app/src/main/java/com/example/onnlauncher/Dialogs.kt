@@ -382,6 +382,7 @@ fun SettingsDialog(
         add("Trending row (TMDB): ${onOff(settings.showTrending)}" to { onChange { it.copy(showTrending = !it.showTrending) } })
         add("Hero banner: ${onOff(settings.showHero)}" to { onChange { it.copy(showHero = !it.showHero) } })
         add("Hero style: ${if (settings.heroFull) "Full screen" else "Banner"}" to { onChange { it.copy(heroFull = !it.heroFull) } })
+        add("Screensaver backdrops: ${onOff(settings.idleBackdrops)}" to { onChange { it.copy(idleBackdrops = !it.idleBackdrops) } })
         add("What's playing: ${if (nowPlayingOn) "on" else "needs setup"}" to onSetupNowPlaying)
         add(
             "Titles shown: ${Options.titleModes[settings.titleMode]}" to {

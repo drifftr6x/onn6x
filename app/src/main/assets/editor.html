@@ -283,6 +283,7 @@ function viewLook(v) {
     toggle("Show the Trending row (needs a TMDB key below)", "showTrending"),
     toggle("Show the hero banner (big rotating backdrop)", "showHero"),
     toggle("Full-screen hero (backdrop fills the whole screen)", "heroFull"),
+    toggle("Screensaver shows movie and show backdrops (needs TMDB key)", "idleBackdrops"),
     field("Titles shown (My tastes needs the taste test on the TV)", optionSelect(o.titleModes.map(function (_, i) { return i; }), o.titleModes, s.titleMode, set("titleMode"))),
     field("Where-to-watch region", optionSelect(o.regions.map(function (_, i) { return i; }), o.regions, s.tmdbRegion, set("tmdbRegion"))),
     toggle("Show the forecast card (hours, 5 days, sunrise and sunset)", "showForecast"),

@@ -191,6 +191,7 @@ class LauncherPrefs(context: Context) {
         titleMode = sp.getInt("s_tmode", 0).coerceIn(0, Options.titleModes.lastIndex),
         showHero = sp.getBoolean("s_hero", true),
         heroFull = sp.getBoolean("s_herofull", false),
+        idleBackdrops = sp.getBoolean("s_idlebd", true),
     )
 
     fun setSettings(s: AppSettings) {
@@ -219,6 +220,7 @@ class LauncherPrefs(context: Context) {
             .putInt("s_tmode", s.titleMode)
             .putBoolean("s_hero", s.showHero)
             .putBoolean("s_herofull", s.heroFull)
+            .putBoolean("s_idlebd", s.idleBackdrops)
             .apply()
     }
 

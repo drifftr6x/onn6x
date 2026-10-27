@@ -35,6 +35,8 @@ data class AppSettings(
     val showHero: Boolean = true,
     /** Hero style: false = banner under the first row, true = full-screen backdrop behind everything. */
     val heroFull: Boolean = false,
+    /** Screensaver shows the rotating TMDB backdrops (when a TMDB key is set) instead of just the gradient. */
+    val idleBackdrops: Boolean = true,
 ) {
     val hasLocation: Boolean get() = !weatherLat.isNaN() && !weatherLon.isNaN()
 }
