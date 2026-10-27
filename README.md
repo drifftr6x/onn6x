@@ -1,9 +1,12 @@
+<p align="center">
+  <img src="docs/logo.png" alt="onn6x Launcher" width="480">
+</p>
+
 # onn6x Launcher
 
 A hackable Android TV home screen for the Onn 4K Pro, in Kotlin with Compose for TV.
 
-**Status: written but not compiled or run.** There was no Android SDK where this was written, so expect to
-fix a few compile errors on the first build. Paste them to Claude and they'll get fixed quickly.
+**Status:** builds and runs on an Onn 4K Pro (Google TV, Android 14). Built for one box and one owner, so treat it as a starting point, not a polished release.
 
 ## Features
 **Home screen**
