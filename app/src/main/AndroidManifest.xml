@@ -16,6 +16,7 @@
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
     <!-- Needed for the APK installer -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
 
     <application
         android:allowBackup="true"
@@ -73,16 +74,5 @@
                 android:resource="@xml/home_override_service" />
         </service>
 
-        <!-- Optional system screensaver: photos, clock and weather. Select it with ADB (see README). -->
-        <service
-            android:name=".OnnDreamService"
-            android:exported="true"
-            android:label="onn6x Screensaver"
-            android:permission="android.permission.BIND_DREAM_SERVICE">
-            <intent-filter>
-                <action android:name="android.service.dreams.DreamService" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </service>
     </application>
 </manifest>

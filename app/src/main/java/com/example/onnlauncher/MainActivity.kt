@@ -1,5 +1,6 @@
 package com.example.onnlauncher
 
+import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -117,6 +118,7 @@ class MainActivity : ComponentActivity() {
                             ),
                         )
                     },
+                    onForceClose = ::forceClose,
                     onUninstall = { pkg ->
                         startSafely(Intent(Intent.ACTION_DELETE, Uri.parse("package:$pkg")))
                     },
@@ -156,6 +158,7 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Any key press resets the idle timer. While the screensaver is up, the first key only wakes it. */
+    @SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         vm.touch()
         if (event.action == KeyEvent.ACTION_DOWN && vm.cancelAutoStart()) return true
@@ -262,6 +265,20 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Hands an APK from the launcher's apks folder to the system installer. */
+    /**
+     * Stops the app's background processes. Android only lets a normal app do that much; a full
+     * "Force stop" needs a system permission, so App info is still there for that.
+     */
+    private fun forceClose(pkg: String, label: String) {
+        try {
+            val am = getSystemService(android.app.ActivityManager::class.java)
+            am.killBackgroundProcesses(pkg)
+            toast("Closed $label. If it keeps running, use App info > Force stop.")
+        } catch (e: Exception) {
+            toast("Couldn't close $label: ${e.message}")
+        }
+    }
+
     private fun installApk(file: File) {
         if (!packageManager.canRequestPackageInstalls()) {
             toast("Allow \"Install unknown apps\" for onn6x Launcher, then try again.")

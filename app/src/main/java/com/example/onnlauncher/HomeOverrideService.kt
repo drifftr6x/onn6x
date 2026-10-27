@@ -82,8 +82,11 @@ class HomeOverrideService : AccessibilityService() {
         // Home pressed while we're already showing: open the quick menu instead of a plain bounce.
         // Right after we come to the front, the stock launcher often reports a late window event.
         // That is not a Home press, so ignore anything that arrives too soon.
+        // If the press lands inside that window we can't tell a late event from a quick second press, so
+        // we still bring our screen to the front (harmless if it is already there) but skip the menu.
         val quickMenu = ourForeground
-        if (quickMenu && (now - ourSince < QUICK_MENU_GRACE_MS || now - lastBounce < QUICK_MENU_GRACE_MS)) return
+        val withinGrace = quickMenu && (now - ourSince < QUICK_MENU_GRACE_MS || now - lastBounce < QUICK_MENU_GRACE_MS)
+        val openMenu = quickMenu && !withinGrace
         if (!quickMenu) {
             while (recentBounces.isNotEmpty() && now - recentBounces.first() > LOOP_WINDOW_MS) {
                 recentBounces.removeFirst()
@@ -101,7 +104,7 @@ class HomeOverrideService : AccessibilityService() {
         try {
             val intent = Intent(this, MainActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-            if (quickMenu) intent.putExtra(MainActivity.EXTRA_QUICK_MENU, true)
+            if (openMenu) intent.putExtra(MainActivity.EXTRA_QUICK_MENU, true)
             startActivity(intent)
         } catch (e: Exception) {
             Log.w(TAG, "Couldn't start launcher: ${e.message}")

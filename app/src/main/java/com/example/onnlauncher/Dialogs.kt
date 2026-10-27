@@ -597,7 +597,7 @@ fun QuickMenuDialog(
 
         Spacer(Modifier.size(8.dp))
         Text("Shortcuts", color = LocalLauncherTheme.current.subtle, fontSize = 16.sp)
-        val actions = QuickAction.values().toList()
+        val actions = QuickAction.entries
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(vertical = 8.dp),

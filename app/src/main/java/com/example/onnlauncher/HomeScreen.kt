@@ -83,6 +83,7 @@ fun HomeScreen(
     onOpenAccessibilitySettings: () -> Unit,
     onOpenStockHome: () -> Unit,
     onAppInfo: (String) -> Unit,
+    onForceClose: (String, String) -> Unit,
     onUninstall: (String) -> Unit,
     onToast: (String) -> Unit,
     onInstallApk: (File) -> Unit,
@@ -169,6 +170,9 @@ fun HomeScreen(
                     AppRow(row.name, row.apps, tileWidth, onLaunch, dockStyle) { OkGuard.arm(); menu = MenuTarget(it, row.name, false) }
                 }
                 if (settings.dashboard && index == 0) {
+                    item(key = "quick") {
+                        QuickRow(state.sleepLabel, tileWidth, compact = true, onQuickAction = onQuickAction)
+                    }
                     if (settings.showRecents && state.recents.isNotEmpty()) {
                         item(key = "recent") {
                             AppRow("Recent", state.recents, tileWidth, onLaunch) { OkGuard.arm(); menu = MenuTarget(it, null, false) }
@@ -181,8 +185,10 @@ fun HomeScreen(
                     SmartRow(state.smartTiles, tileWidth) { vm.runSmartTile(it, onToast) }
                 }
             }
-            item(key = "quick") {
-                QuickRow(state.sleepLabel, tileWidth, onQuickAction)
+            if (!settings.dashboard || state.rows.isEmpty()) {
+                item(key = "quick") {
+                    QuickRow(state.sleepLabel, tileWidth, compact = false, onQuickAction = onQuickAction)
+                }
             }
             item(key = "all") {
                 AppRow("All apps", state.allApps, tileWidth, onLaunch) { OkGuard.arm(); menu = MenuTarget(it, null, false) }
@@ -234,6 +240,7 @@ fun HomeScreen(
                 if (pkg in state.customImagePackages) {
                     add("Remove custom tile picture" to { vm.removeTileImage(pkg) })
                 }
+                if (pkg != "com.example.onnlauncher") add("Force close" to { onForceClose(pkg, target.app.label) })
                 add("App info" to { onAppInfo(pkg) })
                 add("Uninstall" to { onUninstall(pkg) })
             }
@@ -729,18 +736,21 @@ private fun SmartRow(
 private fun QuickRow(
     sleepLabel: String,
     tileWidth: Dp,
+    compact: Boolean,
     onQuickAction: (QuickAction) -> Unit,
 ) {
+    // In the Cards layout the shortcuts become small tiles right under your first row.
+    val width = if (compact) maxOf(tileWidth * 0.62f, 112.dp) else tileWidth
     Column {
         RowTitle("Quick settings")
         LazyRow(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             contentPadding = PaddingValues(vertical = 8.dp),
         ) {
-            items(QuickAction.values().toList(), key = { it.name }) { action ->
+            items(QuickAction.entries, key = { it.name }) { action ->
                 ShortcutTile(
                     label = if (action == QuickAction.SLEEP) "Sleep timer: $sleepLabel" else action.label,
-                    tileWidth = tileWidth,
+                    tileWidth = width,
                     onClick = { onQuickAction(action) },
                 )
             }

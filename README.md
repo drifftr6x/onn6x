@@ -104,18 +104,11 @@ it switches itself off if it bounces 5 times in 10 seconds; restore the old acce
 - Tile corners: Theme default, Soft, Round, Very round.
 - Everything above can also be set from the phone editor (Look tab).
 
-## System screensaver (optional)
+## Screensaver
 
-A real screensaver that works from anywhere on the box, with your wallpaper photos, the clock, the date and the weather. Select it once with ADB:
+The launcher has its own idle screensaver (your wallpaper photos or a theme-colored gradient, the clock, the date and the weather). It starts after Settings > "Screensaver after" and only runs while the launcher is on screen.
 
-    adb shell settings put secure screensaver_components com.example.onnlauncher/com.example.onnlauncher.OnnDreamService
-    adb shell settings put secure screensaver_enabled 1
-
-Test it right away with:
-
-    adb shell am start -n "com.android.systemui/.Somnambulator"
-
-To go back to the stock screensaver: `adb shell settings delete secure screensaver_components`. Google TV's own Ambient mode may take over on some builds. If so, the launcher's built-in idle screensaver (Settings > Screensaver after) still works while the launcher is on screen.
+Google TV's system-wide Ambient Screensaver only offers Google's own sources (Google Photos, Art Gallery, Custom AI Art) and can't be extended with a third-party screensaver. To show your own photos system-wide, pick Google Photos as the source and choose an album.
 
 ## Faster release build
 
