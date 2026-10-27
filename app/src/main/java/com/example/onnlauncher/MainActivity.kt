@@ -1,0 +1,302 @@
+package com.example.onnlauncher
+
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.net.Uri
+import androidx.core.content.FileProvider
+import java.io.File
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import android.provider.Settings
+import android.view.KeyEvent
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.setContent
+import androidx.activity.viewModels
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
+import java.util.Calendar
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.darkColorScheme
+import androidx.tv.material3.lightColorScheme
+
+@OptIn(ExperimentalTvMaterial3Api::class)
+class MainActivity : ComponentActivity() {
+
+    private val vm: LauncherViewModel by viewModels()
+    private lateinit var prefs: LauncherPrefs
+
+    private val packageReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            vm.refresh()
+        }
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        prefs = LauncherPrefs(this)
+
+        // Crash detection: this flag is cleared a few seconds after a healthy start. If it is still
+        // set now, the last run died early, so come up in safe mode with the override off.
+        val crashedLastTime = prefs.startupPending()
+        prefs.setStartupPending(true)
+        Handler(Looper.getMainLooper()).postDelayed({ prefs.setStartupPending(false) }, STARTUP_OK_MS)
+        if (crashedLastTime) vm.enterCrashSafeMode()
+
+        // First launch since a reboot: start the auto-start countdown (if an app is chosen).
+        val bootCount = Settings.Global.getInt(contentResolver, Settings.Global.BOOT_COUNT, -1)
+        if (bootCount != -1 && bootCount != prefs.lastBootCount()) {
+            prefs.setLastBootCount(bootCount)
+            val freshBoot = SystemClock.elapsedRealtime() < FRESH_BOOT_MS
+            if (freshBoot && !crashedLastTime && savedInstanceState == null) vm.scheduleAutoStart()
+        }
+
+        setContent {
+            val state by vm.state.collectAsStateWithLifecycle()
+            var tick by remember { mutableStateOf(System.currentTimeMillis()) }
+            LaunchedEffect(Unit) {
+                while (true) {
+                    delay(60_000)
+                    tick = System.currentTimeMillis()
+                }
+            }
+            val s = state.settings
+            val themeIndex = if (s.autoTheme) {
+                val day = state.weather?.forecast?.isDaylight(tick / 1000)
+                    ?: Calendar.getInstance().get(Calendar.HOUR_OF_DAY).let { it in 7..18 }
+                if (day) s.dayTheme else s.nightTheme
+            } else {
+                s.themeIndex
+            }
+            val baseTheme = Themes.get(themeIndex)
+            val cornerDp = Options.roundnessDp[s.roundness]
+            val theme = if (cornerDp > 0) baseTheme.copy(corner = cornerDp.dp) else baseTheme
+            val accent = if (state.settings.accentIndex == 0) {
+                theme.accent
+            } else {
+                Color(Options.accents[state.settings.accentIndex].second)
+            }
+            val onAccent = if (accent.luminance() > 0.5f) Color.Black else Color.White
+            val scheme = if (theme.light) {
+                lightColorScheme(primary = accent, onPrimary = onAccent, border = accent)
+            } else {
+                darkColorScheme(primary = accent, onPrimary = onAccent, border = accent)
+            }
+            MaterialTheme(colorScheme = scheme) {
+                // A home screen should never "go back" to anything.
+                BackHandler(enabled = true) { }
+                CompositionLocalProvider(LocalLauncherTheme provides theme) {
+                HomeScreen(
+                    vm = vm,
+                    onLaunch = ::launch,
+                    onQuickAction = ::onQuickAction,
+                    onOpenAndroidSettings = { startSafely(Intent(Settings.ACTION_SETTINGS)) },
+                    onOpenAccessibilitySettings = { startSafely(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) },
+                    onOpenStockHome = ::openStockHome,
+                    onAppInfo = { pkg ->
+                        startSafely(
+                            Intent(
+                                Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                Uri.parse("package:$pkg"),
+                            ),
+                        )
+                    },
+                    onUninstall = { pkg ->
+                        startSafely(Intent(Intent.ACTION_DELETE, Uri.parse("package:$pkg")))
+                    },
+                    onToast = ::toast,
+                    onInstallApk = ::installApk,
+                )
+                }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        // The accessibility service sets this when Home is pressed while we're already showing.
+        if (intent.getBooleanExtra(EXTRA_QUICK_MENU, false)) vm.toggleQuickMenu()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_PACKAGE_ADDED)
+            addAction(Intent.ACTION_PACKAGE_REMOVED)
+            addAction(Intent.ACTION_PACKAGE_REPLACED)
+            addDataScheme("package")
+        }
+        ContextCompat.registerReceiver(this, packageReceiver, filter, ContextCompat.RECEIVER_EXPORTED)
+        vm.setForeground(true)
+        vm.refreshIfStale()
+    }
+
+    override fun onStop() {
+        vm.setForeground(false)
+        vm.stopEditor()
+        runCatching { unregisterReceiver(packageReceiver) }
+        super.onStop()
+    }
+
+    /** Any key press resets the idle timer. While the screensaver is up, the first key only wakes it. */
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        vm.touch()
+        if (event.action == KeyEvent.ACTION_DOWN && vm.cancelAutoStart()) return true
+        if (vm.state.value.idle) {
+            if (event.action == KeyEvent.ACTION_UP) vm.wake()
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    /** Holding Back on the home screen opens safe mode, so you can always get out. */
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_BACK) {
+            event.startTracking()
+            return true
+        }
+        return super.onKeyDown(keyCode, event)
+    }
+
+    override fun onKeyLongPress(keyCode: Int, event: KeyEvent): Boolean {
+        if (keyCode == KeyEvent.KEYCODE_BACK) {
+            vm.openSafeMode()
+            return true
+        }
+        return super.onKeyLongPress(keyCode, event)
+    }
+
+    private fun launch(app: AppEntry) {
+        vm.recordLaunch(app.packageName)
+        startSafely(app.intent)
+    }
+
+    private fun onQuickAction(action: QuickAction) {
+        when (action) {
+            QuickAction.ASSISTANT -> openAssistant()
+            QuickAction.WIFI -> openSettingsScreen("Wi-Fi", Intent(Settings.ACTION_WIFI_SETTINGS))
+            QuickAction.BLUETOOTH -> openSettingsScreen(
+                "Bluetooth",
+                Intent(Settings.ACTION_BLUETOOTH_SETTINGS),
+                Intent().setClassName("com.android.tv.settings", "com.android.tv.settings.accessories.AddAccessoryActivity"),
+            )
+            QuickAction.DISPLAY -> openSettingsScreen(
+                "Display",
+                Intent(Settings.ACTION_DISPLAY_SETTINGS),
+                Intent().setClassName("com.android.tv.settings", "com.android.tv.settings.device.display.DisplayActivity"),
+            )
+            QuickAction.SOUND -> openSettingsScreen("Sound", Intent(Settings.ACTION_SOUND_SETTINGS))
+            QuickAction.DEVELOPER -> openSettingsScreen(
+                "Developer options",
+                Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS),
+            )
+            QuickAction.SLEEP -> toast(vm.cycleSleep())
+            QuickAction.DEVICE_INFO -> vm.openDeviceInfo()
+            QuickAction.INSTALL_APK -> vm.openApkInstaller()
+            QuickAction.PHONE_EDITOR -> vm.startEditor(::toast)
+        }
+    }
+
+    /** Tries the standard assistant intents. The remote's own mic button is still the surest way in. */
+    private fun openAssistant() {
+        val candidates = listOf(
+            Intent(Intent.ACTION_ASSIST),
+            Intent(Intent.ACTION_VOICE_COMMAND),
+            Intent(Intent.ACTION_SEARCH_LONG_PRESS),
+        )
+        val target = candidates.firstOrNull { it.resolveActivity(packageManager) != null }
+        if (target != null) {
+            startSafely(target)
+        } else {
+            toast("No voice assistant answered. Use the mic button on your remote.")
+        }
+    }
+
+    /** Turns our override off first (otherwise it would bounce straight back), then opens the stock home. */
+    private fun openStockHome() {
+        vm.setOverride(false)
+        val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+        @Suppress("DEPRECATION")
+        val stock = packageManager.queryIntentActivities(home, 0)
+            .firstOrNull { it.activityInfo.packageName != packageName }
+        val intent = if (stock != null) {
+            Intent(home).setClassName(stock.activityInfo.packageName, stock.activityInfo.name)
+        } else {
+            home
+        }
+        startSafely(intent)
+    }
+
+    /**
+     * Tries each intent in turn. Google TV's settings app doesn't answer some of the standard phone
+     * intents (Bluetooth, Display), so if none works we open the main Settings screen instead.
+     */
+    private fun openSettingsScreen(name: String, vararg candidates: Intent) {
+        for (candidate in candidates) {
+            try {
+                startActivity(candidate.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                return
+            } catch (e: Exception) {
+                // try the next one
+            }
+        }
+        toast("$name has no direct shortcut on this box. Opening Settings; look for it there.")
+        startSafely(Intent(Settings.ACTION_SETTINGS))
+    }
+
+    /** Hands an APK from the launcher's apks folder to the system installer. */
+    private fun installApk(file: File) {
+        if (!packageManager.canRequestPackageInstalls()) {
+            toast("Allow \"Install unknown apps\" for onn6x Launcher, then try again.")
+            startSafely(
+                Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")),
+            )
+            return
+        }
+        try {
+            val uri = FileProvider.getUriForFile(this, "$packageName.files", file)
+            val intent = Intent(Intent.ACTION_VIEW)
+                .setDataAndType(uri, "application/vnd.android.package-archive")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            startSafely(intent)
+        } catch (e: Exception) {
+            toast("Couldn't start the installer: ${e.message}")
+        }
+    }
+
+    private fun startSafely(intent: Intent) {
+        try {
+            startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) {
+            toast("Couldn't open that: ${e.message}")
+        }
+    }
+
+    private fun toast(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    }
+
+    companion object {
+        /** Set by the accessibility service when Home is pressed on the home screen. */
+        const val EXTRA_QUICK_MENU = "quick_menu"
+        private const val STARTUP_OK_MS = 4_000L
+        private const val FRESH_BOOT_MS = 10 * 60_000L
+    }
+}

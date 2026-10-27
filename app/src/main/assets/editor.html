@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Launcher editor</title>
+<style>
+  :root { --bg:#10131a; --card:#1a1f2b; --line:#2a3142; --text:#e8ebf2; --dim:#8b93a7; --accent:#4f9dff; --bad:#ff6b6b; --good:#4cd08a; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f3f5f9; --card:#fff; --line:#d9deea; --text:#161a24; --dim:#5d667a; --accent:#1769e0; --bad:#c62828; --good:#1b8a4e; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.4 system-ui,sans-serif; }
+  header { position:sticky; top:0; z-index:5; background:var(--bg); border-bottom:1px solid var(--line); padding:10px 16px 0; }
+  h1 { font-size:18px; margin:0 0 8px; }
+  nav { display:flex; gap:4px; overflow-x:auto; padding-bottom:8px; }
+  nav button { flex:none; }
+  main { padding:16px; max-width:760px; margin:0 auto; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:12px; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .grow { flex:1; min-width:0; }
+  .dim { color:var(--dim); font-size:14px; }
+  button, select, input { font:inherit; color:var(--text); background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:8px 12px; min-height:40px; }
+  input[type=text], input[type=password], input[type=search], input:not([type]) { width:100%; }
+  button { cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button.danger { color:var(--bad); }
+  button.active { border-color:var(--accent); color:var(--accent); }
+  .chip { display:inline-flex; align-items:center; gap:4px; background:var(--bg); border:1px solid var(--line); border-radius:999px; padding:2px 4px 2px 12px; margin:3px 4px 3px 0; }
+  .chip button { min-height:30px; padding:2px 8px; border:none; background:none; }
+  .msg { position:fixed; left:16px; right:16px; bottom:16px; padding:12px 16px; border-radius:10px; background:var(--card); border:1px solid var(--line); z-index:9; max-width:728px; margin:0 auto; }
+  .msg.bad { border-color:var(--bad); } .msg.good { border-color:var(--good); }
+  label.field { display:block; margin:8px 0; }
+  label.field span { display:block; color:var(--dim); font-size:14px; margin-bottom:2px; }
+  progress { width:100%; }
+  h2 { font-size:16px; margin:0 0 8px; }
+  #login { max-width:360px; margin:15vh auto; padding:16px; }
+</style>
+</head>
+<body>
+<div id="login" class="card" hidden>
+  <h1>Launcher editor</h1>
+  <p class="dim">Enter the 6-digit PIN shown on the TV.</p>
+  <input id="pin" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="PIN">
+  <p><button class="primary" id="go">Connect</button></p>
+  <p id="loginerr" class="dim"></p>
+</div>
+<div id="app" hidden>
+  <header>
+    <h1>Launcher editor</h1>
+    <nav id="tabs"></nav>
+  </header>
+  <main id="view"></main>
+</div>
+<div id="msg" class="msg" hidden></div>
+
+<script>
+"use strict";
+var pin = "";
+try { pin = sessionStorage.getItem("pin") || ""; } catch (e) {}
+var S = null;
+var tab = "rows";
+var filter = "";
+var TABS = [["rows","Rows"],["apps","Apps"],["look","Look"],["home","Smart home"],["files","Files"],["backup","Backup"]];
+
+function h(tag, attrs) {
+  var el = document.createElement(tag);
+  attrs = attrs || {};
+  for (var k in attrs) {
+    if (k === "onclick" || k === "onchange" || k === "oninput") el[k] = attrs[k];
+    else if (k === "class") el.className = attrs[k];
+    else if (attrs[k] === true) el.setAttribute(k, "");
+    else if (attrs[k] !== false && attrs[k] != null) el.setAttribute(k, attrs[k]);
+  }
+  for (var i = 2; i < arguments.length; i++) {
+    var c = arguments[i];
+    if (c == null || c === false) continue;
+    el.appendChild(typeof c === "string" || typeof c === "number" ? document.createTextNode(String(c)) : c);
+  }
+  return el;
+}
+
+var msgTimer = null;
+function toast(text, kind) {
+  var m = document.getElementById("msg");
+  m.textContent = text;
+  m.className = "msg " + (kind || "");
+  m.hidden = false;
+  clearTimeout(msgTimer);
+  msgTimer = setTimeout(function () { m.hidden = true; }, 4000);
+}
+
+function api(path, body, raw) {
+  var opts = { method: body === undefined ? "GET" : "POST", headers: { "X-Pin": pin } };
+  if (body !== undefined) opts.body = raw ? body : JSON.stringify(body);
+  return fetch(path, opts).then(function (r) {
+    return r.text().then(function (t) {
+      var data = null;
+      try { data = JSON.parse(t); } catch (e) {}
+      if (r.status === 401) { showLogin("Wrong PIN."); throw new Error("Wrong PIN"); }
+      if (!r.ok) throw new Error((data && data.error) || ("HTTP " + r.status));
+      return data;
+    });
+  });
+}
+
+function upload(path, file, onProgress) {
+  return new Promise(function (resolve, reject) {
+    var x = new XMLHttpRequest();
+    x.open("POST", path);
+    x.setRequestHeader("X-Pin", pin);
+    x.upload.onprogress = function (e) { if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total); };
+    x.onload = function () {
+      if (x.status >= 200 && x.status < 300) { resolve(); return; }
+      var msg = "HTTP " + x.status;
+      try { msg = JSON.parse(x.responseText).error || msg; } catch (e) {}
+      reject(new Error(msg));
+    };
+    x.onerror = function () { reject(new Error("Connection lost")); };
+    x.send(file);
+  });
+}
+
+function act(promise, okText) {
+  return promise.then(function (d) { if (okText) toast(okText, "good"); return load(); })
+    .catch(function (e) { toast(e.message, "bad"); });
+}
+
+function showLogin(err) {
+  document.getElementById("app").hidden = true;
+  document.getElementById("login").hidden = false;
+  document.getElementById("loginerr").textContent = err || "";
+}
+
+function load() {
+  return api("/api/state").then(function (d) {
+    S = d;
+    document.getElementById("login").hidden = true;
+    document.getElementById("app").hidden = false;
+    render();
+  });
+}
+
+function label(pkg) {
+  for (var i = 0; i < S.apps.length; i++) if (S.apps[i].pkg === pkg) return S.apps[i].custom || S.apps[i].label;
+  return pkg;
+}
+
+function appSelect(selected, includeNone, noneText) {
+  var sel = h("select", { class: "grow" });
+  if (includeNone) sel.appendChild(h("option", { value: "" }, noneText || "None"));
+  S.apps.forEach(function (a) {
+    var o = h("option", { value: a.pkg }, a.custom || a.label);
+    if (a.pkg === selected) o.selected = true;
+    sel.appendChild(o);
+  });
+  return sel;
+}
+
+function optionSelect(values, names, current, onchange) {
+  var sel = h("select", { onchange: function () { onchange(Number(sel.value)); } });
+  values.forEach(function (v, i) {
+    var o = h("option", { value: v }, names ? names[i] : String(v));
+    if (v === current) o.selected = true;
+    sel.appendChild(o);
+  });
+  return sel;
+}
+
+function render() {
+  var tabs = document.getElementById("tabs");
+  tabs.textContent = "";
+  TABS.forEach(function (t) {
+    tabs.appendChild(h("button", { class: t[0] === tab ? "active" : "", onclick: function () { tab = t[0]; render(); window.scrollTo(0, 0); } }, t[1]));
+  });
+  var view = document.getElementById("view");
+  var y = window.scrollY;
+  view.textContent = "";
+  ({ rows: viewRows, apps: viewApps, look: viewLook, home: viewHome, files: viewFiles, backup: viewBackup })[tab](view);
+  window.scrollTo(0, y);
+}
+
+// ---------- Rows ----------
+function viewRows(v) {
+  var add = h("input", { placeholder: "New row name" });
+  v.appendChild(h("div", { class: "card row" }, h("div", { class: "grow" }, add),
+    h("button", { class: "primary", onclick: function () { act(api("/api/rows/add", { name: add.value }), "Row added"); } }, "Add row")));
+
+  S.rows.forEach(function (row, index) {
+    var card = h("div", { class: "card" });
+    card.appendChild(h("div", { class: "row" },
+      h("h2", { class: "grow" }, row.name),
+      h("button", { disabled: index === 0, onclick: function () { act(api("/api/rows/move", { name: row.name, delta: -1 })); } }, "↑"),
+      h("button", { disabled: index === S.rows.length - 1, onclick: function () { act(api("/api/rows/move", { name: row.name, delta: 1 })); } }, "↓"),
+      h("button", { onclick: function () {
+        var n = prompt("Rename row", row.name);
+        if (n) act(api("/api/rows/rename", { name: row.name, newName: n }));
+      } }, "Rename"),
+      h("button", { class: "danger", onclick: function () {
+        if (confirm("Delete the row \"" + row.name + "\"? The apps stay installed.")) act(api("/api/rows/delete", { name: row.name }));
+      } }, "Delete")));
+    var chips = h("div");
+    row.apps.forEach(function (pkg, i) {
+      chips.appendChild(h("span", { class: "chip" }, label(pkg),
+        h("button", { disabled: i === 0, onclick: function () { act(api("/api/rows/moveapp", { pkg: pkg, row: row.name, delta: -1 })); } }, "◀"),
+        h("button", { disabled: i === row.apps.length - 1, onclick: function () { act(api("/api/rows/moveapp", { pkg: pkg, row: row.name, delta: 1 })); } }, "▶"),
+        h("button", { class: "danger", onclick: function () { act(api("/api/rows/removeapp", { pkg: pkg, row: row.name })); } }, "✕")));
+    });
+    if (!row.apps.length) chips.appendChild(h("p", { class: "dim" }, "Empty row."));
+    card.appendChild(chips);
+    var sel = appSelect("", false);
+    card.appendChild(h("div", { class: "row", style: "margin-top:8px" }, sel,
+      h("button", { onclick: function () { act(api("/api/rows/addapp", { pkg: sel.value, row: row.name })); } }, "Add app")));
+    v.appendChild(card);
+  });
+}
+
+// ---------- Apps ----------
+function viewApps(v) {
+  var search = h("input", { type: "search", placeholder: "Search apps", value: filter });
+  var list = h("div");
+  function fill() {
+    list.textContent = "";
+    var q = filter.toLowerCase();
+    S.apps.filter(function (a) { return !q || (a.label + " " + a.custom + " " + a.pkg).toLowerCase().indexOf(q) >= 0; })
+      .forEach(function (a) { list.appendChild(appCard(a)); });
+  }
+  search.oninput = function () { filter = search.value; fill(); };
+  v.appendChild(h("div", { class: "card" }, search));
+  v.appendChild(list);
+  fill();
+}
+
+function appCard(a) {
+  var file = h("input", { type: "file", accept: "image/png,image/jpeg,image/webp", hidden: true });
+  file.onchange = function () {
+    var f = file.files[0];
+    if (!f) return;
+    var ext = (f.name.split(".").pop() || "").toLowerCase();
+    act(upload("/api/app/image?pkg=" + encodeURIComponent(a.pkg) + "&ext=" + encodeURIComponent(ext), f), "Picture saved");
+  };
+  return h("div", { class: "card" },
+    h("div", { class: "row" },
+      h("div", { class: "grow" }, h("strong", null, a.custom || a.label), a.custom ? h("span", { class: "dim" }, "  (" + a.label + ")") : null,
+        h("div", { class: "dim" }, a.pkg + (a.hidden ? " · hidden" : ""))),
+      ),
+    h("div", { class: "row", style: "margin-top:8px" },
+      h("button", { onclick: function () {
+        var n = prompt("Name on the TV (leave empty to reset)", a.custom || a.label);
+        if (n !== null) act(api("/api/app/rename", { pkg: a.pkg, name: n }));
+      } }, "Rename"),
+      h("button", { onclick: function () { file.click(); } }, a.image ? "Change picture" : "Tile picture"),
+      a.image ? h("button", { class: "danger", onclick: function () { act(api("/api/app/image/delete", { pkg: a.pkg })); } }, "Remove picture") : null,
+      h("button", { onclick: function () { act(api("/api/app/hide", { pkg: a.pkg, hidden: !a.hidden })); } }, a.hidden ? "Unhide" : "Hide"),
+      file));
+}
+
+// ---------- Look ----------
+function viewLook(v) {
+  var s = S.settings, o = S.options;
+  function set(key) { return function (val) { var b = {}; b[key] = val; act(api("/api/settings", b)); }; }
+  function field(name, control) { return h("label", { class: "field" }, h("span", null, name), control); }
+  function toggle(name, key) {
+    var c = h("input", { type: "checkbox", style: "min-height:auto;width:auto" });
+    c.checked = !!s[key];
+    c.onchange = function () { set(key)(c.checked); };
+    return h("label", { class: "row", style: "margin:8px 0" }, c, name);
+  }
+  var card = h("div", { class: "card" },
+    field("Tile size", optionSelect([0,1,2], o.tileSizes, s.tileSize, set("tileSize"))),
+    field("Theme", optionSelect(o.themes.map(function (_, i) { return i; }), o.themes, s.themeIndex, set("themeIndex"))),
+    toggle("Switch theme automatically at sunrise and sunset", "autoTheme"),
+    field("Day theme", optionSelect(o.themes.map(function (_, i) { return i; }), o.themes, s.dayTheme, set("dayTheme"))),
+    field("Night theme", optionSelect(o.themes.map(function (_, i) { return i; }), o.themes, s.nightTheme, set("nightTheme"))),
+    field("Tile corners", optionSelect([0,1,2,3], o.roundness, s.roundness, set("roundness"))),
+    field("Accent colour", optionSelect(o.accents.map(function (_, i) { return i; }), o.accents, s.accentIndex, set("accentIndex"))),
+    field("Wallpaper changes every (minutes)", optionSelect(o.wallpaperMinutes, null, s.wallpaperMinutes, set("wallpaperMinutes"))),
+    field("Screensaver after (minutes, 0 = never)", optionSelect(o.idleMinutes, null, s.idleMinutes, set("idleMinutes"))),
+    toggle("Show the Recent row", "showRecents"),
+    toggle("Show weather", "showWeather"),
+    toggle("Use Fahrenheit", "fahrenheit"),
+    toggle("Cards layout: weather and markets side by side under the first row", "dashboard"),
+    toggle("Show the forecast card (hours, 5 days, sunrise and sunset)", "showForecast"),
+    toggle("Show the markets card (crypto prices)", "showCrypto"));
+  v.appendChild(card);
+
+  var coins = h("input", { placeholder: "btc, eth, sol", value: s.cryptoCoins });
+  v.appendChild(h("div", { class: "card" }, h("h2", null, "Markets coins"),
+    h("p", { class: "dim" }, "Up to 6 coins, prices in US dollars from CoinGecko. Use short names like btc or the full CoinGecko id."),
+    h("div", { class: "row" }, h("div", { class: "grow" }, coins),
+      h("button", { onclick: function () { act(api("/api/settings", { cryptoCoins: coins.value }), "Coins saved"); } }, "Save"))));
+
+  var city = h("input", { placeholder: "City, e.g. Austin", value: s.weatherName });
+  v.appendChild(h("div", { class: "card" }, h("h2", null, "Weather location"),
+    h("div", { class: "row" }, h("div", { class: "grow" }, city),
+      h("button", { onclick: function () { act(api("/api/settings", { weatherCity: city.value }), "Weather location saved"); } }, "Save"))));
+
+  var sel = appSelect(S.autostart.pkg, true, "Don't open anything");
+  var delay = optionSelect(o.autoStartDelays, o.autoStartDelays.map(function (d) { return d + " s"; }), S.autostart.delay, function () {});
+  v.appendChild(h("div", { class: "card" }, h("h2", null, "Open an app after the box starts"),
+    h("p", { class: "dim" }, "Counts down on the TV after a reboot. Any button press cancels it."),
+    field("App", sel), field("Wait before opening", delay),
+    h("button", { class: "primary", onclick: function () { act(api("/api/autostart", { pkg: sel.value, delay: Number(delay.value) }), "Saved"); } }, "Save")));
+}
+
+// ---------- Smart home ----------
+function viewHome(v) {
+  var url = h("input", { placeholder: "http://192.168.1.10:8123", value: S.ha.url });
+  var token = h("input", { type: "password", placeholder: S.ha.hasToken ? "Token saved (type to replace)" : "Long-lived access token" });
+  v.appendChild(h("div", { class: "card" }, h("h2", null, "Home Assistant"),
+    h("p", { class: "dim" }, "Plain http on your home network. The token stays on the box and is not included in backups."),
+    h("label", { class: "field" }, h("span", null, "Address"), url),
+    h("label", { class: "field" }, h("span", null, "Access token"), token),
+    h("button", { class: "primary", onclick: function () {
+      var b = { url: url.value };
+      if (token.value) b.token = token.value;
+      act(api("/api/ha/config", b), "Saved");
+    } }, "Save")));
+
+  S.tiles.forEach(function (t, i) {
+    v.appendChild(h("div", { class: "card row" },
+      h("div", { class: "grow" }, h("strong", null, t.label),
+        h("div", { class: "dim" }, t.kind === "ha" ? (t.domain + "." + t.service + (t.entity ? " → " + t.entity : "")) : (t.method + " " + t.url))),
+      h("button", { onclick: function () {
+        api("/api/ha/test", { tile: t }).then(function (d) { toast(d.message, "good"); }).catch(function (e) { toast(e.message, "bad"); });
+      } }, "Test"),
+      h("button", { class: "danger", onclick: function () {
+        var tiles = S.tiles.slice(); tiles.splice(i, 1);
+        act(api("/api/ha/tiles", { tiles: tiles }));
+      } }, "Delete")));
+  });
+
+  var f = {};
+  function inp(name, ph) { f[name] = h("input", { placeholder: ph }); return h("label", { class: "field" }, h("span", null, name), f[name]); }
+  var kind = h("select", null, h("option", { value: "ha" }, "Home Assistant service"), h("option", { value: "url" }, "Web address (webhook)"));
+  var method = h("select", null, h("option", null, "POST"), h("option", null, "GET"), h("option", null, "PUT"));
+  v.appendChild(h("div", { class: "card" }, h("h2", null, "Add a tile"),
+    h("label", { class: "field" }, h("span", null, "Type"), kind),
+    inp("Label", "Living room light"),
+    inp("Domain", "light"), inp("Service", "toggle"), inp("Entity", "light.living_room"),
+    inp("Extra JSON (optional)", "{\"brightness\": 120}"),
+    inp("Web address", "https://..."),
+    h("label", { class: "field" }, h("span", null, "Method (web address only)"), method),
+    h("button", { class: "primary", onclick: function () {
+      var tile = {
+        id: "t" + Date.now(), label: f["Label"].value, kind: kind.value,
+        domain: f["Domain"].value, service: f["Service"].value, entity: f["Entity"].value,
+        data: f["Extra JSON (optional)"].value, url: f["Web address"].value, method: method.value
+      };
+      if (!tile.label.trim()) { toast("Give the tile a label", "bad"); return; }
+      if (tile.kind === "ha" && (!tile.domain.trim() || !tile.service.trim())) {
+        toast("Fill in Domain and Service (for example light and toggle). The grey text is only an example.", "bad"); return;
+      }
+      if (tile.kind === "url" && !/^https?:\/\//.test(tile.url.trim())) {
+        toast("The web address must start with http:// or https://", "bad"); return;
+      }
+      act(api("/api/ha/tiles", { tiles: S.tiles.concat([tile]) }), "Tile added");
+    } }, "Add tile")));
+}
+
+// ---------- Files ----------
+function size(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB"; }
+
+function fileSection(title, hint, accept, list, uploadPath, deletePath) {
+  var bar = h("progress", { max: 1, value: 0, hidden: true });
+  var input = h("input", { type: "file", accept: accept, multiple: true, hidden: true });
+  input.onchange = function () {
+    var files = Array.prototype.slice.call(input.files);
+    var chain = Promise.resolve();
+    files.forEach(function (f) {
+      chain = chain.then(function () {
+        bar.hidden = false; bar.value = 0;
+        return upload(uploadPath + "?name=" + encodeURIComponent(f.name), f, function (p) { bar.value = p; });
+      });
+    });
+    chain.then(function () { toast("Uploaded", "good"); return load(); })
+      .catch(function (e) { toast(e.message, "bad"); bar.hidden = true; });
+  };
+  var card = h("div", { class: "card" }, h("h2", null, title), h("p", { class: "dim" }, hint),
+    h("button", { class: "primary", onclick: function () { input.click(); } }, "Upload"), input, bar);
+  list.forEach(function (f) {
+    card.appendChild(h("div", { class: "row", style: "margin-top:8px" },
+      h("div", { class: "grow" }, f.name, h("span", { class: "dim" }, "  " + size(f.size))),
+      h("button", { class: "danger", onclick: function () { act(api(deletePath, { name: f.name })); } }, "Delete")));
+  });
+  return card;
+}
+
+function viewFiles(v) {
+  v.appendChild(fileSection("Wallpapers", "Pictures rotate on the home screen. 16:9 works best.", "image/*", S.wallpapers, "/api/wallpaper", "/api/wallpaper/delete"));
+  v.appendChild(fileSection("APK installer", "Upload an app file, then on the TV open Settings → Install APKs.", ".apk", S.apks, "/api/apk", "/api/apk/delete"));
+}
+
+// ---------- Backup ----------
+function viewBackup(v) {
+  var input = h("input", { type: "file", accept: ".json,application/json", hidden: true });
+  input.onchange = function () {
+    var f = input.files[0];
+    if (!f) return;
+    if (!confirm("Replace the current layout and settings with this file?")) return;
+    f.text().then(function (t) { return act(api("/api/restore", t, true), "Layout restored"); });
+  };
+  v.appendChild(h("div", { class: "card" }, h("h2", null, "Backup and restore"),
+    h("p", { class: "dim" }, "Rows, hidden apps, names, settings and button mappings. The Home Assistant token is never included."),
+    h("div", { class: "row" },
+      h("button", { class: "primary", onclick: function () {
+        fetch("/api/backup", { headers: { "X-Pin": pin } }).then(function (r) { return r.blob(); }).then(function (b) {
+          var a = document.createElement("a");
+          a.href = URL.createObjectURL(b); a.download = "launcher-layout.json"; a.click();
+        });
+      } }, "Download backup"),
+      h("button", { onclick: function () { input.click(); } }, "Restore from file"), input)));
+}
+
+// ---------- start ----------
+document.getElementById("go").onclick = function () {
+  pin = document.getElementById("pin").value.trim();
+  load().then(function () { try { sessionStorage.setItem("pin", pin); } catch (e) {} })
+    .catch(function (e) { document.getElementById("loginerr").textContent = e.message; });
+};
+if (pin) { load().catch(function () { showLogin(""); }); } else { showLogin(""); }
+</script>
+</body>
+</html>
