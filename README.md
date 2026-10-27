@@ -112,7 +112,10 @@ Needs a free TMDB key: make an account at themoviedb.org, then Settings > API, a
 - **Poster row:** trending titles. Settings > "Titles shown" switches between Trending this week, Popular in your region (streaming services in your country), and My tastes.
 - **Taste test:** Settings > "Take the taste test...". Three rounds of six posters; pick the ones you'd watch and the launcher learns your favorite genres and switches to My tastes.
 - **Details dialog:** overview, rating and where it streams in your region, with a button for each matching app you have installed. Netflix, YouTube and Prime Video also get "Search for it in ..." (a search link that may stop working when those apps change; if an app refuses it, the launcher just opens the app).
-- **Continue watching:** the last three titles you opened from the details dialog.
+- **Continue watching:** the last six titles you opened from the details dialog or played in another app.
+- **Hero style:** Settings > "Hero style" switches between the banner and a full-screen "For You" look, where the backdrop fills the whole screen behind your rows.
+- **My list:** open a title and choose "Add to my list". Saved titles get their own row and stay until you remove them.
+- **What's playing:** a bar at the top shows what Netflix, YouTube, Plex and similar apps are playing; select it to jump back. While something plays, the launcher also looks the title up on TMDB and adds it to Continue watching. It needs a one-time grant from your PC: `adb shell cmd notification allow_listener com.example.onnlauncher/com.example.onnlauncher.NowPlayingService`. It reads media sessions only, never notification text.
 - Settings > "Where to watch region" sets the country.
 
 This product uses the TMDB API but is not endorsed or certified by TMDB. Movie and TV data and images are provided by TMDB. Streaming availability data is provided by JustWatch via TMDB.

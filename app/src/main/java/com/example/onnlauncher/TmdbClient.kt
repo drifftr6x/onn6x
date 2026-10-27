@@ -80,6 +80,14 @@ object TmdbClient {
         return items
     }
 
+    /** Movies and shows matching a title, best match first. Used to recognise what you are watching. */
+    fun search(key: String, query: String): List<Item> =
+        parseItems(
+            JSONObject(get("/search/multi?language=en-US&include_adult=false&query=" + URLEncoder.encode(query, "UTF-8"), key))
+                .optJSONArray("results"),
+            null,
+        ).take(5)
+
     /** This week's trending movies and shows, most popular first. Throws [KeyRejected] for a bad key. */
     fun trending(key: String): List<Item> =
         parseItems(JSONObject(get("/trending/all/week?language=en-US", key)).optJSONArray("results"), null).take(20)

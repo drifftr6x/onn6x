@@ -297,6 +297,8 @@ fun SettingsDialog(
     hasTmdbKey: Boolean,
     onSetTmdbKey: () -> Unit,
     onTasteTest: () -> Unit,
+    nowPlayingOn: Boolean,
+    onSetupNowPlaying: () -> Unit,
     dnsOn: Boolean,
     onToggleDns: () -> Unit,
     onCheckUpdate: () -> Unit,
@@ -379,6 +381,8 @@ fun SettingsDialog(
         add("Weather location: ${settings.weatherName.ifBlank { "not set" }}" to onSetLocation)
         add("Trending row (TMDB): ${onOff(settings.showTrending)}" to { onChange { it.copy(showTrending = !it.showTrending) } })
         add("Hero banner: ${onOff(settings.showHero)}" to { onChange { it.copy(showHero = !it.showHero) } })
+        add("Hero style: ${if (settings.heroFull) "Full screen" else "Banner"}" to { onChange { it.copy(heroFull = !it.heroFull) } })
+        add("What's playing: ${if (nowPlayingOn) "on" else "needs setup"}" to onSetupNowPlaying)
         add(
             "Titles shown: ${Options.titleModes[settings.titleMode]}" to {
                 onChange { it.copy(titleMode = (it.titleMode + 1) % Options.titleModes.size) }
@@ -812,12 +816,15 @@ fun TitleDialog(
     region: String,
     onLaunch: (AppEntry) -> Unit,
     onSearch: (AppEntry) -> Unit,
+    inList: Boolean,
+    onToggleList: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val theme = LocalLauncherTheme.current
     val t = detail.title
     val heading = if (t.year.isNotBlank()) "${t.name} (${t.year})" else t.name
     val actions = buildList<Pair<String, () -> Unit>> {
+        add((if (inList) "Remove from my list" else "Add to my list") to onToggleList)
         detail.apps.forEach { app ->
             if (DeepLinks.supports(app.packageName)) add("Search for it in ${app.label}" to { onSearch(app) })
             add("Open ${app.label}" to { onLaunch(app) })

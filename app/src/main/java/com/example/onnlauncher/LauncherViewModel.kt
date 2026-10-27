@@ -37,6 +37,8 @@ data class UiState(
     val trending: List<TrendingTitle> = emptyList(),
     val titleDetail: TitleDetail? = null,
     val continueWatching: List<TrendingTitle> = emptyList(),
+    val watchlist: List<TrendingTitle> = emptyList(),
+    val nowPlaying: NowPlaying.Info? = null,
     val tasteOpen: Boolean = false,
     val tastePool: List<TrendingTitle> = emptyList(),
     val hasTmdbKey: Boolean = false,
@@ -90,6 +92,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private var trendingJob: Job? = null
     private var titleDetail: TitleDetail? = null
     private var continueWatching: List<TrendingTitle> = emptyList()
+    private var watchlist: List<TrendingTitle> = emptyList()
+    private var nowPlaying: NowPlaying.Info? = null
+    private var lastPlaybackNoted = ""
     private var tasteOpen = false
     private var tastePool: List<TrendingTitle> = emptyList()
     private val posterCache = HashMap<Int, androidx.compose.ui.graphics.ImageBitmap>()
@@ -221,6 +226,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             trending = trending,
             titleDetail = titleDetail,
             continueWatching = continueWatching,
+            watchlist = watchlist,
+            nowPlaying = nowPlaying,
             tasteOpen = tasteOpen,
             tastePool = tastePool,
             hasTmdbKey = prefs.tmdbKey().isNotBlank(),
@@ -522,7 +529,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 backdrop = cached.first
                 logo = cached.second
             } else {
-                backdrop = TmdbClient.image(item.backdropPath, "w780")
+                backdrop = TmdbClient.image(item.backdropPath, "w1280")
                 val logoPath = TmdbClient.logoPath(item.type, item.id, key)
                 if (logoPath.isNotBlank()) logo = TmdbClient.image(logoPath, "w300")
                 if (backdrop != null) heroCache[item.id] = backdrop to logo
@@ -534,37 +541,97 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         )
     }
 
-    // ---- continue watching: the last few titles opened from the details dialog ----
+    // ---- continue watching, my list, and what's playing ----
 
-    private fun loadWatched() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val array = try { JSONArray(prefs.watchedJson()) } catch (e: Exception) { JSONArray() }
-            continueWatching = (0 until array.length()).mapNotNull { i ->
-                val o = array.optJSONObject(i) ?: return@mapNotNull null
-                val id = o.optInt("id")
-                val path = o.optString("posterPath")
-                val poster = posterCache[id] ?: TmdbClient.image(path, "w185")?.also { posterCache[id] = it }
-                TrendingTitle(
-                    id, o.optString("type"), o.optString("name"), o.optString("year"),
-                    o.optString("overview"), o.optDouble("rating", 0.0), path, poster,
-                )
-            }
-            publish()
-        }
-    }
-
-    fun noteWatched(title: TrendingTitle) {
-        val kept = continueWatching.filter { it.id != title.id }
-        continueWatching = (listOf(title) + kept).take(3)
+    private fun encodeTitles(list: List<TrendingTitle>): String {
         val array = JSONArray()
-        continueWatching.forEach {
+        list.forEach {
             array.put(
                 JSONObject().put("id", it.id).put("type", it.type).put("name", it.name).put("year", it.year)
                     .put("overview", it.overview).put("rating", it.rating).put("posterPath", it.posterPath),
             )
         }
-        prefs.setWatchedJson(array.toString())
+        return array.toString()
+    }
+
+    /** Blocking (downloads posters): background thread only. */
+    private fun decodeTitles(json: String): List<TrendingTitle> {
+        val array = try { JSONArray(json) } catch (e: Exception) { JSONArray() }
+        return (0 until array.length()).mapNotNull { i ->
+            val o = array.optJSONObject(i) ?: return@mapNotNull null
+            val id = o.optInt("id")
+            val path = o.optString("posterPath")
+            val poster = posterCache[id] ?: TmdbClient.image(path, "w185")?.also { posterCache[id] = it }
+            TrendingTitle(
+                id, o.optString("type"), o.optString("name"), o.optString("year"),
+                o.optString("overview"), o.optDouble("rating", 0.0), path, poster,
+            )
+        }
+    }
+
+    private fun loadWatched() {
+        viewModelScope.launch(Dispatchers.IO) {
+            continueWatching = decodeTitles(prefs.watchedJson())
+            watchlist = decodeTitles(prefs.watchlistJson())
+            publish()
+        }
+        viewModelScope.launch {
+            NowPlaying.state.collect { info ->
+                nowPlaying = info
+                publish()
+                noteFromPlayback(info)
+            }
+        }
+    }
+
+    fun noteWatched(title: TrendingTitle) {
+        val kept = continueWatching.filter { it.id != title.id }
+        continueWatching = (listOf(title) + kept).take(6)
+        prefs.setWatchedJson(encodeTitles(continueWatching))
         publish()
+    }
+
+    /** Adds the title to "My list", or removes it if it is already there. */
+    fun toggleWatchlist(title: TrendingTitle) {
+        watchlist = if (watchlist.any { it.id == title.id && it.type == title.type }) {
+            watchlist.filterNot { it.id == title.id && it.type == title.type }
+        } else {
+            (listOf(title) + watchlist).take(40)
+        }
+        prefs.setWatchlistJson(encodeTitles(watchlist))
+        publish()
+    }
+
+    /**
+     * When another app has been playing the same title for a few seconds, look it up on TMDB and
+     * add it to Continue watching. Titles TMDB can't match closely (music, home videos) are ignored.
+     */
+    private fun noteFromPlayback(info: NowPlaying.Info?) {
+        if (info == null || !info.playing) return
+        val key = prefs.tmdbKey()
+        if (key.isBlank()) return
+        val signature = info.pkg + "|" + info.title
+        if (signature == lastPlaybackNoted) return
+        viewModelScope.launch(Dispatchers.IO) {
+            delay(5_000)
+            val now = NowPlaying.state.value
+            if (now == null || !now.playing || now.title != info.title) return@launch
+            lastPlaybackNoted = signature
+            fun norm(text: String) = text.lowercase().filter { it.isLetterOrDigit() }
+            val wanted = norm(info.title)
+            val hit = try {
+                TmdbClient.search(key, info.title).firstOrNull {
+                    val n = norm(it.name)
+                    n.isNotEmpty() && (n == wanted || (n.length >= 5 && wanted.startsWith(n)))
+                }
+            } catch (e: Exception) {
+                null
+            } ?: return@launch
+            val poster = posterCache[hit.id] ?: TmdbClient.image(hit.posterPath, "w185")?.also { posterCache[hit.id] = it }
+            noteWatched(
+                TrendingTitle(hit.id, hit.type, hit.name, hit.year, hit.overview, hit.rating, hit.posterPath, poster, hit.genreIds),
+            )
+        }
     }
 
     // ---- taste test: pick titles you like, we learn your genres ----

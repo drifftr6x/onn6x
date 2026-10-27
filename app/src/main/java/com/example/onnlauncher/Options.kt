@@ -33,6 +33,8 @@ data class AppSettings(
     /** 0 = trending this week, 1 = popular streaming in your region, 2 = tailored by the taste test. */
     val titleMode: Int = 0,
     val showHero: Boolean = true,
+    /** Hero style: false = banner under the first row, true = full-screen backdrop behind everything. */
+    val heroFull: Boolean = false,
 ) {
     val hasLocation: Boolean get() = !weatherLat.isNaN() && !weatherLon.isNaN()
 }

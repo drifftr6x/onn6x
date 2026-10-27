@@ -120,6 +120,8 @@ class MainActivity : ComponentActivity() {
                     },
                     onForceClose = ::forceClose,
                     onLaunchSearch = ::launchWithSearch,
+                    nowPlayingEnabled = ::isNowPlayingOn,
+                    onSetupNowPlaying = ::setupNowPlaying,
                     dnsEnabled = ::isDnsOn,
                     onToggleDns = ::toggleDns,
                     onUninstall = { pkg ->
@@ -322,6 +324,25 @@ class MainActivity : ComponentActivity() {
             val freedMb = (available() - before) / (1024 * 1024)
             toast(if (freedMb > 8) "Freed about $freedMb MB." else "Little to free: background apps were already closed.")
         }, 1500)
+    }
+
+    private fun isNowPlayingOn(): Boolean = try {
+        Settings.Secure.getString(contentResolver, "enabled_notification_listeners").orEmpty().contains(packageName)
+    } catch (e: Exception) {
+        false
+    }
+
+    /** Opens the notification-access screen if this box has one; Google TV often doesn't, so the adb command is the fallback. */
+    private fun setupNowPlaying() {
+        if (isNowPlayingOn()) {
+            toast("What's playing is on.")
+            return
+        }
+        try {
+            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) {
+            toast("On your PC run: adb shell cmd notification allow_listener com.example.onnlauncher/com.example.onnlauncher.NowPlayingService")
+        }
     }
 
     private fun isDnsOn(): Boolean = try {

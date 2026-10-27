@@ -87,6 +87,8 @@ fun HomeScreen(
     onAppInfo: (String) -> Unit,
     onForceClose: (String, String) -> Unit,
     onLaunchSearch: (AppEntry, String) -> Unit,
+    nowPlayingEnabled: () -> Boolean,
+    onSetupNowPlaying: () -> Unit,
     dnsEnabled: () -> Boolean,
     onToggleDns: () -> Unit,
     onUninstall: (String) -> Unit,
@@ -111,18 +113,26 @@ fun HomeScreen(
         state.apkInstallerOpen || state.editorDialog || state.titleDetail != null || state.tasteOpen
     LaunchedEffect(anyDialog) { vm.setBusy(anyDialog) }
 
+    val heroes = state.trending.filter { it.backdrop != null }
+    val heroOn = settings.showTrending && settings.showHero && heroes.isNotEmpty()
+    val heroFull = heroOn && settings.heroFull
+    val heroIndex = rememberHeroIndex(heroes.size)
+
     Box(
         Modifier
             .fillMaxSize()
             .background(theme.backdrop),
     ) {
         WallpaperBackground(settings.wallpaperMinutes)
+        if (heroFull) FullHeroBackdrop(heroes[heroIndex])
         // Darken the wallpaper so text and tiles stay readable.
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(Brush.verticalGradient(listOf(theme.washTop, theme.washBottom))),
-        )
+        if (!heroFull) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Brush.verticalGradient(listOf(theme.washTop, theme.washBottom))),
+            )
+        }
 
         ThemePattern(theme.pattern)
 
@@ -139,6 +149,16 @@ fun HomeScreen(
                     onToggleOverride = vm::toggleOverride,
                     onSettings = { settingsOpen = true },
                 )
+            }
+            state.nowPlaying?.let { playing ->
+                item(key = "nowplaying") {
+                    val entry = state.allApps.firstOrNull { it.packageName == playing.pkg }
+                        ?: state.hiddenApps.firstOrNull { it.packageName == playing.pkg }
+                    NowPlayingBar(playing, entry?.label ?: playing.pkg) { entry?.let(onLaunch) }
+                }
+            }
+            if (heroFull) {
+                item(key = "herofull") { HeroInfo(heroes[heroIndex], vm::openTitle) }
             }
             val forecast = state.weather?.forecast
             val showForecastCard = settings.showForecast && forecast != null
@@ -175,9 +195,8 @@ fun HomeScreen(
                     AppRow(row.name, row.apps, tileWidth, onLaunch, dockStyle) { OkGuard.arm(); menu = MenuTarget(it, row.name, false) }
                 }
                 if (index == 0) {
-                    val heroes = state.trending.filter { it.backdrop != null }
-                    if (settings.showTrending && settings.showHero && heroes.isNotEmpty()) {
-                        item(key = "hero") { HeroBanner(heroes, vm::openTitle) }
+                    if (heroOn && !settings.heroFull) {
+                        item(key = "hero") { HeroBanner(heroes[heroIndex], vm::openTitle) }
                     }
                     if (settings.showTrending && state.trending.isNotEmpty()) {
                         item(key = "trending") {
@@ -187,6 +206,11 @@ fun HomeScreen(
                     if (state.continueWatching.isNotEmpty()) {
                         item(key = "continue") {
                             TrendingRow("Continue watching", state.continueWatching, tileWidth, vm::openTitle)
+                        }
+                    }
+                    if (state.watchlist.isNotEmpty()) {
+                        item(key = "mylist") {
+                            TrendingRow("My list", state.watchlist, tileWidth, vm::openTitle)
                         }
                     }
                 }
@@ -332,6 +356,11 @@ fun HomeScreen(
                     settingsOpen = false
                     vm.openTaste(onToast)
                 },
+                nowPlayingOn = nowPlayingEnabled(),
+                onSetupNowPlaying = {
+                    settingsOpen = false
+                    onSetupNowPlaying()
+                },
                 dnsOn = dnsEnabled(),
                 onToggleDns = {
                     settingsOpen = false
@@ -391,6 +420,8 @@ fun HomeScreen(
                     vm.closeTitle()
                     onLaunchSearch(app, detail.title.name)
                 },
+                inList = state.watchlist.any { it.id == detail.title.id && it.type == detail.title.type },
+                onToggleList = { vm.toggleWatchlist(detail.title) },
                 onDismiss = vm::closeTitle,
             )
         }
@@ -793,18 +824,126 @@ private fun SmartRow(
     }
 }
 
-/** Full-width rotating backdrop with the title, logo, rating and a short overview. Select it for details. */
+/** Index of the hero title on show; advances every 15 seconds. Shared so the backdrop and the info stay in step. */
 @Composable
-private fun HeroBanner(titles: List<TrendingTitle>, onClick: (TrendingTitle) -> Unit) {
-    val theme = LocalLauncherTheme.current
+private fun rememberHeroIndex(size: Int): Int {
     var index by remember { mutableStateOf(0) }
-    LaunchedEffect(titles.size) {
-        while (true) {
+    LaunchedEffect(size) {
+        while (size > 0) {
             delay(15_000)
-            if (titles.isNotEmpty()) index = (index + 1) % titles.size
+            index = (index + 1) % size
         }
     }
-    val shown = titles[index % titles.size]
+    return if (size == 0) 0 else index % size
+}
+
+/** Full-screen mode: the backdrop fills the screen behind everything, darkened so rows stay readable. */
+@Composable
+private fun FullHeroBackdrop(shown: TrendingTitle) {
+    Crossfade(targetState = shown, label = "herobg") { title ->
+        Box(Modifier.fillMaxSize()) {
+            val backdrop = title.backdrop
+            if (backdrop != null) {
+                Image(
+                    bitmap = backdrop,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Brush.horizontalGradient(0f to Color(0xCC000000), 0.65f to Color.Transparent)),
+            )
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(Brush.verticalGradient(0f to Color(0x55000000), 0.4f to Color(0x99000000), 1f to Color(0xF0000000))),
+            )
+        }
+    }
+}
+
+/** Full-screen mode: logo or title, rating and overview sit over the backdrop, with a "More info" button. */
+@Composable
+private fun HeroInfo(shown: TrendingTitle, onClick: (TrendingTitle) -> Unit) {
+    val theme = LocalLauncherTheme.current
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .height(300.dp),
+        verticalArrangement = Arrangement.Bottom,
+    ) {
+        Crossfade(targetState = shown, label = "heroinfo") { title ->
+            Column(Modifier.fillMaxWidth(0.5f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                val logo = title.logo
+                if (logo != null) {
+                    Image(
+                        bitmap = logo,
+                        contentDescription = title.name,
+                        contentScale = ContentScale.Fit,
+                        alignment = Alignment.CenterStart,
+                        modifier = Modifier.height(84.dp).widthIn(max = 380.dp),
+                    )
+                } else {
+                    Text(title.name, color = Color.White, fontSize = 38.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+                Text(
+                    text = listOf(title.year, "★ " + String.format("%.1f", title.rating), if (title.type == "tv") "Series" else "Movie")
+                        .filter { it.isNotBlank() }.joinToString("  ·  "),
+                    color = Color(0xFFE0E6F0),
+                    fontSize = 16.sp,
+                )
+                if (title.overview.isNotBlank()) {
+                    Text(title.overview, color = Color(0xFFE0E6F0), fontSize = 15.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        Card(
+            onClick = { onClick(shown) },
+            shape = CardDefaults.shape(RoundedCornerShape(theme.corner)),
+            border = tileBorder(theme.corner),
+            modifier = Modifier.width(170.dp),
+        ) {
+            Box(Modifier.background(theme.tile).padding(horizontal = 20.dp, vertical = 12.dp), contentAlignment = Alignment.Center) {
+                Text("More info", color = theme.text, fontSize = 16.sp)
+            }
+        }
+    }
+}
+
+/** What another app is playing right now. Select it to jump back to that app. */
+@Composable
+private fun NowPlayingBar(info: NowPlaying.Info, appLabel: String, onResume: () -> Unit) {
+    val theme = LocalLauncherTheme.current
+    Card(
+        onClick = onResume,
+        shape = CardDefaults.shape(RoundedCornerShape(theme.corner)),
+        border = tileBorder(theme.corner),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            Modifier.background(theme.panel).padding(horizontal = 20.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(if (info.playing) "▶" else "⏸", color = theme.text, fontSize = 20.sp)
+            Column(Modifier.weight(1f)) {
+                Text(info.title, color = theme.text, fontSize = 18.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val sub = listOf(info.subtitle, appLabel).filter { it.isNotBlank() }.joinToString("  ·  ")
+                Text(sub, color = theme.subtle, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Text("Resume", color = theme.subtle, fontSize = 14.sp)
+        }
+    }
+}
+
+/** Banner mode: a card under the first row with the backdrop, logo, rating and a short overview. Select it for details. */
+@Composable
+private fun HeroBanner(shown: TrendingTitle, onClick: (TrendingTitle) -> Unit) {
+    val theme = LocalLauncherTheme.current
     val corner = theme.corner + 8.dp
     Card(
         onClick = { onClick(shown) },

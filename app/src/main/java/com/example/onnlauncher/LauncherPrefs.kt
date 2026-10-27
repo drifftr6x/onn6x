@@ -135,6 +135,8 @@ class LauncherPrefs(context: Context) {
 
     /** The last few titles opened from the details dialog, newest first, as a JSON array. */
     fun watchedJson(): String = sp.getString("watched", "[]") ?: "[]"
+    fun watchlistJson(): String = sp.getString("watchlist", "[]") ?: "[]"
+    fun setWatchlistJson(json: String) { sp.edit().putString("watchlist", json).apply() }
 
     fun setWatchedJson(json: String) {
         sp.edit().putString("watched", json).apply()
@@ -188,6 +190,7 @@ class LauncherPrefs(context: Context) {
         tmdbRegion = sp.getInt("s_region", 0).coerceIn(0, Options.regions.lastIndex),
         titleMode = sp.getInt("s_tmode", 0).coerceIn(0, Options.titleModes.lastIndex),
         showHero = sp.getBoolean("s_hero", true),
+        heroFull = sp.getBoolean("s_herofull", false),
     )
 
     fun setSettings(s: AppSettings) {
@@ -215,6 +218,7 @@ class LauncherPrefs(context: Context) {
             .putInt("s_region", s.tmdbRegion)
             .putInt("s_tmode", s.titleMode)
             .putBoolean("s_hero", s.showHero)
+            .putBoolean("s_herofull", s.heroFull)
             .apply()
     }
 
