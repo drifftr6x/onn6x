@@ -9,6 +9,8 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -84,6 +86,9 @@ fun HomeScreen(
     onOpenStockHome: () -> Unit,
     onAppInfo: (String) -> Unit,
     onForceClose: (String, String) -> Unit,
+    onLaunchSearch: (AppEntry, String) -> Unit,
+    dnsEnabled: () -> Boolean,
+    onToggleDns: () -> Unit,
     onUninstall: (String) -> Unit,
     onToast: (String) -> Unit,
     onInstallApk: (File) -> Unit,
@@ -103,7 +108,7 @@ fun HomeScreen(
     // While any dialog is up, keep the idle screensaver from starting underneath it.
     val anyDialog = menu != null || nameDialog != null || searchOpen || settingsOpen || remapOpen ||
         pickAutoStart || state.quickMenu || state.safeMode || state.deviceInfoOpen ||
-        state.apkInstallerOpen || state.editorDialog
+        state.apkInstallerOpen || state.editorDialog || state.titleDetail != null || state.tasteOpen
     LaunchedEffect(anyDialog) { vm.setBusy(anyDialog) }
 
     Box(
@@ -168,6 +173,22 @@ fun HomeScreen(
                         Modifier
                     }
                     AppRow(row.name, row.apps, tileWidth, onLaunch, dockStyle) { OkGuard.arm(); menu = MenuTarget(it, row.name, false) }
+                }
+                if (index == 0) {
+                    val heroes = state.trending.filter { it.backdrop != null }
+                    if (settings.showTrending && settings.showHero && heroes.isNotEmpty()) {
+                        item(key = "hero") { HeroBanner(heroes, vm::openTitle) }
+                    }
+                    if (settings.showTrending && state.trending.isNotEmpty()) {
+                        item(key = "trending") {
+                            TrendingRow(Options.titleModes[settings.titleMode], state.trending, tileWidth, vm::openTitle)
+                        }
+                    }
+                    if (state.continueWatching.isNotEmpty()) {
+                        item(key = "continue") {
+                            TrendingRow("Continue watching", state.continueWatching, tileWidth, vm::openTitle)
+                        }
+                    }
                 }
                 if (settings.dashboard && index == 0) {
                     item(key = "quick") {
@@ -307,6 +328,26 @@ fun HomeScreen(
                         }
                     }
                 },
+                onTasteTest = {
+                    settingsOpen = false
+                    vm.openTaste(onToast)
+                },
+                dnsOn = dnsEnabled(),
+                onToggleDns = {
+                    settingsOpen = false
+                    onToggleDns()
+                },
+                onCheckUpdate = {
+                    onToast("Checking for updates...")
+                    vm.checkUpdate(onToast)
+                },
+                hasTmdbKey = state.hasTmdbKey,
+                onSetTmdbKey = {
+                    nameDialog = NameDialog("TMDB API key (paste it)", "", "Save") { text ->
+                        vm.setTmdbKey(text, onToast)
+                        text.isNotBlank()
+                    }
+                },
                 onSetCoins = {
                     nameDialog = NameDialog("Coins (like btc, eth, sol)", settings.cryptoCoins, "Save") { text ->
                         vm.setCryptoCoins(text, onToast)
@@ -333,6 +374,26 @@ fun HomeScreen(
         }
 
         if (state.deviceInfoOpen) DeviceInfoDialog(onDismiss = vm::closeDeviceInfo)
+
+        if (state.tasteOpen) TasteDialog(state.tastePool, onFinish = vm::finishTaste, onDismiss = vm::closeTaste)
+
+        state.titleDetail?.let { detail ->
+            TitleDialog(
+                detail = detail,
+                region = Options.regions[settings.tmdbRegion],
+                onLaunch = { app ->
+                    vm.noteWatched(detail.title)
+                    vm.closeTitle()
+                    onLaunch(app)
+                },
+                onSearch = { app ->
+                    vm.noteWatched(detail.title)
+                    vm.closeTitle()
+                    onLaunchSearch(app, detail.title.name)
+                },
+                onDismiss = vm::closeTitle,
+            )
+        }
 
         if (state.apkInstallerOpen) {
             ApkInstallDialog(onInstall = onInstallApk, onDismiss = vm::closeApkInstaller)
@@ -727,6 +788,127 @@ private fun SmartRow(
         ) {
             items(tiles, key = { it.id }) { tile ->
                 ShortcutTile(label = tile.label, tileWidth = tileWidth, onClick = { onRun(tile) })
+            }
+        }
+    }
+}
+
+/** Full-width rotating backdrop with the title, logo, rating and a short overview. Select it for details. */
+@Composable
+private fun HeroBanner(titles: List<TrendingTitle>, onClick: (TrendingTitle) -> Unit) {
+    val theme = LocalLauncherTheme.current
+    var index by remember { mutableStateOf(0) }
+    LaunchedEffect(titles.size) {
+        while (true) {
+            delay(15_000)
+            if (titles.isNotEmpty()) index = (index + 1) % titles.size
+        }
+    }
+    val shown = titles[index % titles.size]
+    val corner = theme.corner + 8.dp
+    Card(
+        onClick = { onClick(shown) },
+        shape = CardDefaults.shape(RoundedCornerShape(corner)),
+        border = tileBorder(corner),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(260.dp),
+    ) {
+        Crossfade(targetState = shown, label = "hero") { title ->
+            Box(Modifier.fillMaxSize().background(theme.tile)) {
+                val backdrop = title.backdrop
+                if (backdrop != null) {
+                    Image(
+                        bitmap = backdrop,
+                        contentDescription = title.name,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .background(Brush.horizontalGradient(listOf(Color(0xDD000000), Color.Transparent))),
+                )
+                Column(
+                    Modifier
+                        .align(Alignment.BottomStart)
+                        .fillMaxWidth(0.55f)
+                        .padding(28.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    val logo = title.logo
+                    if (logo != null) {
+                        Image(
+                            bitmap = logo,
+                            contentDescription = title.name,
+                            contentScale = ContentScale.Fit,
+                            alignment = Alignment.CenterStart,
+                            modifier = Modifier.height(64.dp).widthIn(max = 300.dp),
+                        )
+                    } else {
+                        Text(title.name, color = Color.White, fontSize = 30.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
+                    Text(
+                        text = listOf(title.year, "★ " + String.format("%.1f", title.rating), if (title.type == "tv") "Series" else "Movie")
+                            .filter { it.isNotBlank() }.joinToString("  ·  "),
+                        color = Color(0xFFE0E6F0),
+                        fontSize = 14.sp,
+                    )
+                    if (title.overview.isNotBlank()) {
+                        Text(title.overview, color = Color(0xFFE0E6F0), fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrendingRow(heading: String, titles: List<TrendingTitle>, tileWidth: Dp, onClick: (TrendingTitle) -> Unit) {
+    val theme = LocalLauncherTheme.current
+    val width = tileWidth * 0.75f
+    Column {
+        RowTitle(heading)
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(vertical = 8.dp),
+        ) {
+            items(titles, key = { it.type + it.id }) { title ->
+                Column(Modifier.width(width)) {
+                    Card(
+                        onClick = { onClick(title) },
+                        shape = CardDefaults.shape(RoundedCornerShape(theme.corner)),
+                        border = tileBorder(theme.corner),
+                        modifier = Modifier
+                            .width(width)
+                            .height(width * 3 / 2),
+                    ) {
+                        Box(Modifier.fillMaxSize().background(theme.tile), contentAlignment = Alignment.Center) {
+                            if (title.poster != null) {
+                                Image(
+                                    bitmap = title.poster,
+                                    contentDescription = title.name,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            } else {
+                                Text(title.name, color = theme.text, fontSize = 13.sp, textAlign = TextAlign.Center)
+                            }
+                        }
+                    }
+                    Text(
+                        text = title.name,
+                        color = theme.text,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 6.dp),
+                    )
+                }
             }
         }
     }

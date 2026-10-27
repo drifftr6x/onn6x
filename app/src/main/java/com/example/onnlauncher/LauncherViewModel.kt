@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 
 data class RowState(val name: String, val apps: List<AppEntry>)
@@ -32,6 +34,12 @@ data class UiState(
     val keymap: Map<Int, String> = emptyMap(),
     val weather: WeatherState? = null,
     val crypto: List<CryptoClient.Coin> = emptyList(),
+    val trending: List<TrendingTitle> = emptyList(),
+    val titleDetail: TitleDetail? = null,
+    val continueWatching: List<TrendingTitle> = emptyList(),
+    val tasteOpen: Boolean = false,
+    val tastePool: List<TrendingTitle> = emptyList(),
+    val hasTmdbKey: Boolean = false,
     /** Whether the Home-button override service is allowed to bounce the stock launcher. */
     val overrideEnabled: Boolean = true,
     val sleepLabel: String = "Off",
@@ -78,6 +86,14 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private var weather: WeatherState? = null
     private var crypto: List<CryptoClient.Coin> = emptyList()
     private var cryptoJob: Job? = null
+    private var trending: List<TrendingTitle> = emptyList()
+    private var trendingJob: Job? = null
+    private var titleDetail: TitleDetail? = null
+    private var continueWatching: List<TrendingTitle> = emptyList()
+    private var tasteOpen = false
+    private var tastePool: List<TrendingTitle> = emptyList()
+    private val posterCache = HashMap<Int, androidx.compose.ui.graphics.ImageBitmap>()
+    private val heroCache = HashMap<Int, Pair<androidx.compose.ui.graphics.ImageBitmap?, androidx.compose.ui.graphics.ImageBitmap?>>()
     private var quickMenu = false
     private var safeMode = false
     private var safeReason = ""
@@ -109,6 +125,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         refresh()
         startWeather()
         startCrypto()
+        startTrending()
+        loadWatched()
         startIdleWatcher()
     }
 
@@ -200,6 +218,12 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             keymap = prefs.keymap(),
             weather = weather,
             crypto = crypto,
+            trending = trending,
+            titleDetail = titleDetail,
+            continueWatching = continueWatching,
+            tasteOpen = tasteOpen,
+            tastePool = tastePool,
+            hasTmdbKey = prefs.tmdbKey().isNotBlank(),
             overrideEnabled = prefs.overrideEnabled(),
             sleepLabel = sleepLabel(),
             quickMenu = quickMenu,
@@ -345,6 +369,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             old.weatherLon.toString() != new.weatherLon.toString()
         if (weatherChanged) startWeather()
         if (old.showCrypto != new.showCrypto || old.cryptoCoins != new.cryptoCoins) startCrypto()
+        if (old.showTrending != new.showTrending || old.titleMode != new.titleMode || old.tmdbRegion != new.tmdbRegion) startTrending()
         publish()
     }
 
@@ -423,6 +448,241 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 delay(if (ok) CRYPTO_REFRESH_MS else CRYPTO_RETRY_MS)
             }
         }
+    }
+
+    // ---- trending titles (TMDB) ----
+
+    /** Saves the key after checking that TMDB accepts it. Blocking: call from a background thread. */
+    fun saveTmdbKey(key: String): String {
+        val clean = key.trim()
+        if (clean.isEmpty()) return "Paste your TMDB API key first."
+        val count = try {
+            TmdbClient.trending(clean).size
+        } catch (e: TmdbClient.KeyRejected) {
+            return "TMDB didn't accept that key. Copy the whole API Key (or the API Read Access Token) from your TMDB account."
+        } catch (e: Exception) {
+            return "Couldn't reach TMDB. Check the internet connection and try again."
+        }
+        prefs.setTmdbKey(clean)
+        updateSettings { it.copy(showTrending = true) }
+        startTrending()
+        return "TMDB connected ($count titles this week)."
+    }
+
+    fun setTmdbKey(key: String, onResult: (String) -> Unit) {
+        viewModelScope.launch {
+            onResult(withContext(Dispatchers.IO) { saveTmdbKey(key) })
+        }
+    }
+
+    private fun startTrending() {
+        trendingJob?.cancel()
+        trendingJob = viewModelScope.launch(Dispatchers.IO) {
+            while (true) {
+                val s = prefs.settings()
+                val key = prefs.tmdbKey()
+                var ok = true
+                if (s.showTrending && key.isNotBlank()) {
+                    try {
+                        val region = Options.regions[s.tmdbRegion]
+                        val tasteMovie = prefs.tasteGenres("movie")
+                        val tasteTv = prefs.tasteGenres("tv")
+                        val items = when {
+                            s.titleMode == 1 -> TmdbClient.discover(key, region, emptyList(), emptyList())
+                            s.titleMode == 2 && (tasteMovie.isNotEmpty() || tasteTv.isNotEmpty()) ->
+                                TmdbClient.discover(key, region, tasteMovie, tasteTv)
+                            else -> TmdbClient.trending(key)
+                        }.ifEmpty { TmdbClient.trending(key) }
+                        trending = items.mapIndexed { index, item -> buildTitle(item, key, hero = index < HERO_COUNT) }
+                        // Keep only pictures for titles still shown, so memory stays small.
+                        val ids = items.map { it.id }.toSet()
+                        posterCache.keys.retainAll(ids)
+                        heroCache.keys.retainAll(ids)
+                        publish()
+                    } catch (e: Exception) {
+                        ok = false
+                    }
+                } else if (trending.isNotEmpty()) {
+                    trending = emptyList()
+                    publish()
+                }
+                delay(if (ok) TRENDING_REFRESH_MS else TRENDING_RETRY_MS)
+            }
+        }
+    }
+
+    /** Poster for every title; the wide picture and logo only for the first few (the hero banner). */
+    private fun buildTitle(item: TmdbClient.Item, key: String, hero: Boolean): TrendingTitle {
+        val poster = posterCache[item.id] ?: TmdbClient.image(item.posterPath, "w185")?.also { posterCache[item.id] = it }
+        var backdrop: androidx.compose.ui.graphics.ImageBitmap? = null
+        var logo: androidx.compose.ui.graphics.ImageBitmap? = null
+        if (hero && item.backdropPath.isNotBlank()) {
+            val cached = heroCache[item.id]
+            if (cached != null) {
+                backdrop = cached.first
+                logo = cached.second
+            } else {
+                backdrop = TmdbClient.image(item.backdropPath, "w780")
+                val logoPath = TmdbClient.logoPath(item.type, item.id, key)
+                if (logoPath.isNotBlank()) logo = TmdbClient.image(logoPath, "w300")
+                if (backdrop != null) heroCache[item.id] = backdrop to logo
+            }
+        }
+        return TrendingTitle(
+            item.id, item.type, item.name, item.year, item.overview, item.rating, item.posterPath,
+            poster, item.genreIds, backdrop, logo,
+        )
+    }
+
+    // ---- continue watching: the last few titles opened from the details dialog ----
+
+    private fun loadWatched() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val array = try { JSONArray(prefs.watchedJson()) } catch (e: Exception) { JSONArray() }
+            continueWatching = (0 until array.length()).mapNotNull { i ->
+                val o = array.optJSONObject(i) ?: return@mapNotNull null
+                val id = o.optInt("id")
+                val path = o.optString("posterPath")
+                val poster = posterCache[id] ?: TmdbClient.image(path, "w185")?.also { posterCache[id] = it }
+                TrendingTitle(
+                    id, o.optString("type"), o.optString("name"), o.optString("year"),
+                    o.optString("overview"), o.optDouble("rating", 0.0), path, poster,
+                )
+            }
+            publish()
+        }
+    }
+
+    fun noteWatched(title: TrendingTitle) {
+        val kept = continueWatching.filter { it.id != title.id }
+        continueWatching = (listOf(title) + kept).take(3)
+        val array = JSONArray()
+        continueWatching.forEach {
+            array.put(
+                JSONObject().put("id", it.id).put("type", it.type).put("name", it.name).put("year", it.year)
+                    .put("overview", it.overview).put("rating", it.rating).put("posterPath", it.posterPath),
+            )
+        }
+        prefs.setWatchedJson(array.toString())
+        publish()
+    }
+
+    // ---- taste test: pick titles you like, we learn your genres ----
+
+    fun openTaste(onResult: (String) -> Unit) {
+        val key = prefs.tmdbKey()
+        if (key.isBlank()) {
+            onResult("Add your TMDB key first (Settings > TMDB API key, or the phone editor).")
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val pool = try {
+                TmdbClient.trending(key).take(18).map { item ->
+                    val poster = posterCache[item.id] ?: TmdbClient.image(item.posterPath, "w185")?.also { posterCache[item.id] = it }
+                    TrendingTitle(item.id, item.type, item.name, item.year, item.overview, item.rating, item.posterPath, poster, item.genreIds)
+                }
+            } catch (e: Exception) {
+                emptyList()
+            }
+            if (pool.size < 6) {
+                withContext(Dispatchers.Main) { onResult("Couldn't load titles for the taste test. Check the connection and the TMDB key.") }
+                return@launch
+            }
+            tastePool = pool
+            tasteOpen = true
+            publish()
+        }
+    }
+
+    fun closeTaste() {
+        tasteOpen = false
+        tastePool = emptyList()
+        publish()
+    }
+
+    /** Turns the picks into the most-liked genres per type, saves them and switches to "My tastes". */
+    fun finishTaste(picked: List<TrendingTitle>) {
+        if (picked.isNotEmpty()) {
+            for (type in listOf("movie", "tv")) {
+                val counts = HashMap<Int, Int>()
+                picked.filter { it.type == type }.forEach { t -> t.genreIds.forEach { counts[it] = (counts[it] ?: 0) + 1 } }
+                prefs.setTasteGenres(type, counts.entries.sortedByDescending { it.value }.take(3).map { it.key })
+            }
+            updateSettings { it.copy(titleMode = 2) }
+        }
+        closeTaste()
+    }
+
+    fun checkUpdate(onResult: (String) -> Unit) {
+        viewModelScope.launch { onResult(withContext(Dispatchers.IO) { checkForUpdate() }) }
+    }
+
+    /** Asks GitHub for the newest release and compares it with this install. Blocking: background thread only. */
+    fun checkForUpdate(): String {
+        val current = try {
+            getApplication<Application>().packageManager.getPackageInfo(getApplication<Application>().packageName, 0).versionName
+        } catch (e: Exception) {
+            "?"
+        }
+        return try {
+            val connection = java.net.URL("https://api.github.com/repos/drifftr6x/onn6x/releases/latest")
+                .openConnection() as java.net.HttpURLConnection
+            connection.connectTimeout = 8_000
+            connection.readTimeout = 8_000
+            connection.setRequestProperty("Accept", "application/vnd.github+json")
+            try {
+                if (connection.responseCode == 404) {
+                    "You have v$current. No releases are published on GitHub yet."
+                } else {
+                    val o = JSONObject(connection.inputStream.bufferedReader().use { it.readText() })
+                    val tag = o.optString("tag_name")
+                    if (tag.trimStart('v', 'V') == current) {
+                        "You're up to date (v$current)."
+                    } else {
+                        "You have v$current. Latest release: $tag. See ${o.optString("html_url")}"
+                    }
+                }
+            } finally {
+                connection.disconnect()
+            }
+        } catch (e: Exception) {
+            "Couldn't check for updates. Check the internet connection."
+        }
+    }
+
+    fun openTitle(title: TrendingTitle) {
+        titleDetail = TitleDetail(title, loading = true)
+        publish()
+        viewModelScope.launch(Dispatchers.IO) {
+            val s = prefs.settings()
+            val key = prefs.tmdbKey()
+            val providers = try {
+                TmdbClient.providers(title.type, title.id, Options.regions[s.tmdbRegion], key)
+            } catch (e: Exception) {
+                TmdbClient.Providers(emptyList(), emptyList())
+            }
+            val big = TmdbClient.image(title.posterPath, "w342")
+            val apps = providers.streaming.mapNotNull { service -> installed.firstOrNull { matchesService(service, it.label) } }
+                .distinctBy { it.packageName }
+            if (titleDetail?.title?.id == title.id) {
+                titleDetail = TitleDetail(title, false, providers.streaming, providers.rentOrBuy, apps, big)
+                publish()
+            }
+        }
+    }
+
+    fun closeTitle() {
+        titleDetail = null
+        publish()
+    }
+
+    /** "Disney Plus" matches an app called "Disney+", "Amazon Prime Video" matches "Prime Video", and so on. */
+    private fun matchesService(service: String, appLabel: String): Boolean {
+        fun norm(text: String) = text.lowercase().replace("+", "plus").filter { it.isLetterOrDigit() }
+        val a = norm(service)
+        val b = norm(appLabel)
+        if (a.isEmpty() || b.isEmpty()) return false
+        return a == b || (b.length >= 4 && a.contains(b)) || (a.length >= 4 && b.contains(a))
     }
 
     // ---- remote button remapping ----
@@ -707,6 +967,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         showHidden = false
         startWeather()
         startCrypto()
+        startTrending()
         publish()
         return true
     }
@@ -723,6 +984,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         const val WEATHER_RETRY_MS = 2 * 60_000L
         const val CRYPTO_REFRESH_MS = 5 * 60_000L
         const val CRYPTO_RETRY_MS = 2 * 60_000L
+        const val HERO_COUNT = 6
+        const val TRENDING_REFRESH_MS = 6 * 60 * 60_000L
+        const val TRENDING_RETRY_MS = 5 * 60_000L
         const val IDLE_CHECK_MS = 3_000L
         const val EDITOR_MAX_MS = 30 * 60_000L
         const val STALE_MS = 10 * 60_000L

@@ -104,6 +104,25 @@ it switches itself off if it bounces 5 times in 10 seconds; restore the old acce
 - Tile corners: Theme default, Soft, Round, Very round.
 - Everything above can also be set from the phone editor (Look tab).
 
+## Trending and discovery (TMDB)
+
+Needs a free TMDB key: make an account at themoviedb.org, then Settings > API, and copy the API Key (or the long Read Access Token). Paste it in the phone editor (Look tab > TMDB) or Settings > TMDB API key. The key stays on the box and is not included in layout backups.
+
+- **Hero banner:** a big backdrop under your first row, rotating every 15 seconds, with the title, official logo, year, rating and a short overview. Select it for details.
+- **Poster row:** trending titles. Settings > "Titles shown" switches between Trending this week, Popular in your region (streaming services in your country), and My tastes.
+- **Taste test:** Settings > "Take the taste test...". Three rounds of six posters; pick the ones you'd watch and the launcher learns your favorite genres and switches to My tastes.
+- **Details dialog:** overview, rating and where it streams in your region, with a button for each matching app you have installed. Netflix, YouTube and Prime Video also get "Search for it in ..." (a search link that may stop working when those apps change; if an app refuses it, the launcher just opens the app).
+- **Continue watching:** the last three titles you opened from the details dialog.
+- Settings > "Where to watch region" sets the country.
+
+This product uses the TMDB API but is not endorsed or certified by TMDB. Movie and TV data and images are provided by TMDB. Streaming availability data is provided by JustWatch via TMDB.
+
+## Other additions
+
+- **Free up memory** (Quick settings): stops the background processes of other apps and reports roughly how much came back. Android only lets a normal app stop background processes, so this is gentler than a real force stop.
+- **Ad-blocking DNS (AdGuard)** (Settings): switches the box's Private DNS to AdGuard to block many ad and tracker domains. Needs a one-time grant from your PC: `adb shell pm grant com.example.onnlauncher android.permission.WRITE_SECURE_SETTINGS`. It does not block ads inside YouTube. Turn it off from the same Settings entry.
+- **Check for updates** (Settings): looks at the newest GitHub release of this project and tells you if it is newer than the installed version.
+
 ## Screensaver
 
 The launcher has its own idle screensaver (your wallpaper photos or a theme-colored gradient, the clock, the date and the weather). It starts after Settings > "Screensaver after" and only runs while the launcher is on screen.

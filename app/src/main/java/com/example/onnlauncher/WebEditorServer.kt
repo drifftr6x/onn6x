@@ -335,6 +335,11 @@ class WebEditorServer(
                 ok(out)
             }
 
+            "/api/tmdb" -> {
+                val message = vm.saveTmdbKey(readJson(req).optString("key"))
+                if (!message.startsWith("TMDB connected")) throw HttpError(400, message)
+                ok(out)
+            }
             "/api/ha/config" -> {
                 val body = readJson(req)
                 val token = if (body.has("token") && !body.isNull("token")) body.optString("token") else null
@@ -430,6 +435,12 @@ class WebEditorServer(
             if (body.has("showCrypto")) n = n.copy(showCrypto = body.optBoolean("showCrypto"))
             val round = body.optInt("roundness", -1)
             if (round in Options.roundnessDp.indices) n = n.copy(roundness = round)
+            if (body.has("showHero")) n = n.copy(showHero = body.optBoolean("showHero"))
+            val mode = body.optInt("titleMode", -1)
+            if (mode in Options.titleModes.indices) n = n.copy(titleMode = mode)
+            if (body.has("showTrending")) n = n.copy(showTrending = body.optBoolean("showTrending"))
+            val region = body.optInt("tmdbRegion", -1)
+            if (region in Options.regions.indices) n = n.copy(tmdbRegion = region)
             if (body.has("dashboard")) n = n.copy(dashboard = body.optBoolean("dashboard"))
             if (body.has("autoTheme")) n = n.copy(autoTheme = body.optBoolean("autoTheme"))
             val themeIdx = body.optInt("themeIndex", -1)
@@ -493,6 +504,10 @@ class WebEditorServer(
             .put("cryptoCoins", s.cryptoCoins)
             .put("autoTheme", s.autoTheme)
             .put("dashboard", s.dashboard)
+            .put("showTrending", s.showTrending)
+            .put("showHero", s.showHero)
+            .put("titleMode", s.titleMode)
+            .put("tmdbRegion", s.tmdbRegion)
             .put("roundness", s.roundness)
             .put("dayTheme", s.dayTheme)
             .put("nightTheme", s.nightTheme)
@@ -502,6 +517,8 @@ class WebEditorServer(
             .put("accents", JSONArray(Options.accents.map { it.first }))
             .put("themes", JSONArray(Themes.all.map { it.name }))
             .put("roundness", JSONArray(Options.roundnessNames))
+            .put("regions", JSONArray(Options.regions))
+            .put("titleModes", JSONArray(Options.titleModes))
             .put("wallpaperMinutes", JSONArray(Options.wallpaperMinutes))
             .put("idleMinutes", JSONArray(Options.idleMinutes))
             .put("autoStartDelays", JSONArray(Options.autoStartDelays))
@@ -515,6 +532,7 @@ class WebEditorServer(
             .put("settings", settings)
             .put("options", options)
             .put("autostart", JSONObject().put("pkg", prefs.autoStartPackage()).put("delay", prefs.autoStartDelay()))
+            .put("tmdb", JSONObject().put("hasKey", prefs.tmdbKey().isNotBlank()))
             .put("ha", JSONObject().put("url", prefs.haUrl()).put("hasToken", prefs.haToken().isNotBlank()))
             .put("tiles", tiles)
             .put("wallpapers", listFiles("wallpapers", setOf("jpg", "jpeg", "png", "webp")))

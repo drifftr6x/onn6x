@@ -10,6 +10,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.Image
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -47,6 +52,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.runtime.mutableStateListOf
+import androidx.tv.material3.Border
+import androidx.tv.material3.Card
+import androidx.tv.material3.CardDefaults
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.tv.material3.Button
 import androidx.tv.material3.ExperimentalTvMaterial3Api
 import androidx.tv.material3.MaterialTheme
@@ -283,6 +294,12 @@ fun SettingsDialog(
     onNewRow: () -> Unit,
     onSetLocation: () -> Unit,
     onSetCoins: () -> Unit,
+    hasTmdbKey: Boolean,
+    onSetTmdbKey: () -> Unit,
+    onTasteTest: () -> Unit,
+    dnsOn: Boolean,
+    onToggleDns: () -> Unit,
+    onCheckUpdate: () -> Unit,
     autoStartLabel: String,
     autoStartDelay: Int,
     onPickAutoStart: () -> Unit,
@@ -360,6 +377,22 @@ fun SettingsDialog(
             },
         )
         add("Weather location: ${settings.weatherName.ifBlank { "not set" }}" to onSetLocation)
+        add("Trending row (TMDB): ${onOff(settings.showTrending)}" to { onChange { it.copy(showTrending = !it.showTrending) } })
+        add("Hero banner: ${onOff(settings.showHero)}" to { onChange { it.copy(showHero = !it.showHero) } })
+        add(
+            "Titles shown: ${Options.titleModes[settings.titleMode]}" to {
+                onChange { it.copy(titleMode = (it.titleMode + 1) % Options.titleModes.size) }
+            },
+        )
+        add("Take the taste test..." to onTasteTest)
+        add("TMDB API key: ${if (hasTmdbKey) "saved" else "not set (easier from your phone)"}" to onSetTmdbKey)
+        add(
+            "Where to watch region: ${Options.regions[settings.tmdbRegion]}" to {
+                onChange { it.copy(tmdbRegion = (it.tmdbRegion + 1) % Options.regions.size) }
+            },
+        )
+        add("Ad-blocking DNS (AdGuard): ${onOff(dnsOn)}" to onToggleDns)
+        add("Check for updates" to onCheckUpdate)
         add("Home layout: ${if (settings.dashboard) "Cards" else "Compact"}" to { onChange { it.copy(dashboard = !it.dashboard) } })
         add("Forecast card: ${onOff(settings.showForecast)}" to { onChange { it.copy(showForecast = !it.showForecast) } })
         add("Markets card: ${onOff(settings.showCrypto)}" to { onChange { it.copy(showCrypto = !it.showCrypto) } })
@@ -768,5 +801,165 @@ fun PickAppDialog(
             add("Cancel" to onDismiss)
         }
         ActionList(choices)
+    }
+}
+
+
+/** Details for one trending title, with buttons for the installed apps that stream it. */
+@Composable
+fun TitleDialog(
+    detail: TitleDetail,
+    region: String,
+    onLaunch: (AppEntry) -> Unit,
+    onSearch: (AppEntry) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val theme = LocalLauncherTheme.current
+    val t = detail.title
+    val heading = if (t.year.isNotBlank()) "${t.name} (${t.year})" else t.name
+    val actions = buildList<Pair<String, () -> Unit>> {
+        detail.apps.forEach { app ->
+            if (DeepLinks.supports(app.packageName)) add("Search for it in ${app.label}" to { onSearch(app) })
+            add("Open ${app.label}" to { onLaunch(app) })
+        }
+        add("Close" to onDismiss)
+    }
+
+    Panel(heading, onDismiss, Modifier.width(760.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            val poster = detail.bigPoster ?: t.poster
+            if (poster != null) {
+                Image(
+                    bitmap = poster,
+                    contentDescription = t.name,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .width(150.dp)
+                        .height(225.dp)
+                        .clip(RoundedCornerShape(theme.corner)),
+                )
+            }
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "${if (t.type == "tv") "Series" else "Movie"}  ·  ★ ${String.format("%.1f", t.rating)}",
+                    color = theme.subtle,
+                    fontSize = 14.sp,
+                )
+                if (t.overview.isNotBlank()) {
+                    Text(t.overview, color = theme.text, fontSize = 14.sp, maxLines = 6, overflow = TextOverflow.Ellipsis)
+                }
+                val where = when {
+                    detail.loading -> "Checking where to watch..."
+                    detail.streaming.isNotEmpty() -> "Streaming in $region on: " + detail.streaming.joinToString(", ")
+                    detail.rentOrBuy.isNotEmpty() -> "Not on a streaming service in $region. Rent or buy: " +
+                        detail.rentOrBuy.take(4).joinToString(", ")
+                    else -> "No streaming information for $region."
+                }
+                Text(where, color = theme.text, fontSize = 14.sp)
+                if (!detail.loading && detail.streaming.isNotEmpty() && detail.apps.isEmpty()) {
+                    Text("None of those apps are installed on this box.", color = theme.subtle, fontSize = 13.sp)
+                }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        ActionList(actions)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "This product uses the TMDB API but is not endorsed or certified by TMDB. Streaming availability by JustWatch.",
+            color = theme.subtle,
+            fontSize = 11.sp,
+        )
+    }
+}
+
+
+/** Three rounds of six posters: pick the ones you'd watch and the launcher learns your genres. */
+@Composable
+fun TasteDialog(
+    pool: List<TrendingTitle>,
+    onFinish: (List<TrendingTitle>) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val theme = LocalLauncherTheme.current
+    val rounds = remember(pool) { pool.chunked(6).filter { it.size >= 3 }.take(3) }
+    var round by remember { mutableStateOf(0) }
+    val picked = remember { mutableStateListOf<Int>() }
+    val first = remember(round) { FocusRequester() }
+    LaunchedEffect(round) {
+        delay(100)
+        runCatching { first.requestFocus() }
+    }
+    if (rounds.isEmpty()) {
+        onDismiss()
+        return
+    }
+    val current = rounds[round]
+    val last = round == rounds.lastIndex
+
+    Panel("Taste test: round ${round + 1} of ${rounds.size}", onDismiss, Modifier.width(900.dp)) {
+        Text(
+            "Pick the ones you'd actually watch. OK selects or unselects.",
+            color = theme.subtle,
+            fontSize = 14.sp,
+        )
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            current.forEachIndexed { i, t ->
+                val on = t.id in picked
+                val shape = RoundedCornerShape(theme.corner)
+                Column(Modifier.width(120.dp)) {
+                    Card(
+                        onClick = { if (on) picked.remove(t.id) else picked.add(t.id) },
+                        shape = CardDefaults.shape(shape),
+                        border = CardDefaults.border(
+                            border = if (on) Border(BorderStroke(4.dp, MaterialTheme.colorScheme.primary), shape = shape) else Border.None,
+                            focusedBorder = Border(BorderStroke(3.dp, MaterialTheme.colorScheme.border), shape = shape),
+                        ),
+                        modifier = Modifier
+                            .width(120.dp)
+                            .height(180.dp)
+                            .let { if (i == 0) it.focusRequester(first) else it },
+                    ) {
+                        Box(Modifier.fillMaxSize().background(theme.tile)) {
+                            val poster = t.poster
+                            if (poster != null) {
+                                Image(
+                                    bitmap = poster,
+                                    contentDescription = t.name,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
+                            if (on) {
+                                Text(
+                                    "✓ Picked",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier
+                                        .align(Alignment.TopEnd)
+                                        .background(Color(0xCC000000), RoundedCornerShape(8.dp))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                                )
+                            }
+                        }
+                    }
+                    Text(
+                        t.name,
+                        color = theme.text,
+                        fontSize = 11.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(14.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Button(onClick = {
+                if (last) onFinish(pool.filter { it.id in picked }) else round++
+            }) { Text(if (last) "Finish" else "Next round") }
+            Button(onClick = onDismiss) { Text("Cancel") }
+        }
     }
 }

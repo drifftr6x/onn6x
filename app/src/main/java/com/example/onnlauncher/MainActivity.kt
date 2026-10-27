@@ -119,6 +119,9 @@ class MainActivity : ComponentActivity() {
                         )
                     },
                     onForceClose = ::forceClose,
+                    onLaunchSearch = ::launchWithSearch,
+                    dnsEnabled = ::isDnsOn,
+                    onToggleDns = ::toggleDns,
                     onUninstall = { pkg ->
                         startSafely(Intent(Intent.ACTION_DELETE, Uri.parse("package:$pkg")))
                     },
@@ -214,6 +217,7 @@ class MainActivity : ComponentActivity() {
             QuickAction.DEVICE_INFO -> vm.openDeviceInfo()
             QuickAction.INSTALL_APK -> vm.openApkInstaller()
             QuickAction.PHONE_EDITOR -> vm.startEditor(::toast)
+            QuickAction.FREE_MEMORY -> freeMemory()
         }
     }
 
@@ -279,6 +283,70 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Opens [app] on a search for [title] when we know that app's search link, otherwise just opens it. */
+    private fun launchWithSearch(app: AppEntry, title: String) {
+        val intent = DeepLinks.intentFor(app.packageName, title)
+        if (intent == null) {
+            launch(app)
+            return
+        }
+        try {
+            vm.recordLaunch(app.packageName)
+            startActivity(intent)
+        } catch (e: Exception) {
+            toast("${app.label} didn't take the search, so I just opened it.")
+            launch(app)
+        }
+    }
+
+    /** Stops the background processes of every other app and reports roughly how much memory came back. */
+    private fun freeMemory() {
+        val am = getSystemService(android.app.ActivityManager::class.java)
+        fun available(): Long {
+            val info = android.app.ActivityManager.MemoryInfo()
+            am.getMemoryInfo(info)
+            return info.availMem
+        }
+        val before = available()
+        vm.snapshotApps().forEach { app ->
+            if (app.packageName != packageName) {
+                try {
+                    am.killBackgroundProcesses(app.packageName)
+                } catch (e: Exception) {
+                    // Ignore apps that refuse.
+                }
+            }
+        }
+        toast("Freeing memory...")
+        Handler(Looper.getMainLooper()).postDelayed({
+            val freedMb = (available() - before) / (1024 * 1024)
+            toast(if (freedMb > 8) "Freed about $freedMb MB." else "Little to free: background apps were already closed.")
+        }, 1500)
+    }
+
+    private fun isDnsOn(): Boolean = try {
+        Settings.Global.getString(contentResolver, "private_dns_mode") == "hostname" &&
+            Settings.Global.getString(contentResolver, "private_dns_specifier") == ADGUARD_DNS
+    } catch (e: Exception) {
+        false
+    }
+
+    /** Switches the box's Private DNS to AdGuard (blocks many ad and tracker domains) or back to automatic. */
+    private fun toggleDns() {
+        try {
+            if (isDnsOn()) {
+                Settings.Global.putString(contentResolver, "private_dns_mode", "opportunistic")
+                toast("Ad-blocking DNS is off.")
+            } else {
+                Settings.Global.putString(contentResolver, "private_dns_specifier", ADGUARD_DNS)
+                Settings.Global.putString(contentResolver, "private_dns_mode", "hostname")
+                toast("Ad-blocking DNS is on (AdGuard). It does not block YouTube's own ads.")
+            }
+        } catch (e: SecurityException) {
+            toast("Needs a one-time permission. On your PC run: adb shell pm grant com.example.onnlauncher android.permission.WRITE_SECURE_SETTINGS")
+        }
+    }
+
     private fun installApk(file: File) {
         if (!packageManager.canRequestPackageInstalls()) {
             toast("Allow \"Install unknown apps\" for onn6x Launcher, then try again.")
@@ -314,6 +382,7 @@ class MainActivity : ComponentActivity() {
         /** Set by the accessibility service when Home is pressed on the home screen. */
         const val EXTRA_QUICK_MENU = "quick_menu"
         private const val STARTUP_OK_MS = 4_000L
+        private const val ADGUARD_DNS = "dns.adguard-dns.com"
         private const val FRESH_BOOT_MS = 10 * 60_000L
     }
 }

@@ -119,6 +119,27 @@ class LauncherPrefs(context: Context) {
         edit.apply()
     }
 
+    fun tmdbKey(): String = sp.getString(KEY_TMDB, "").orEmpty()
+
+    fun setTmdbKey(key: String) {
+        sp.edit().putString(KEY_TMDB, key.trim()).apply()
+    }
+
+    /** Genre ids picked by the taste test, as "28,12,35". */
+    fun tasteGenres(type: String): List<Int> =
+        sp.getString("taste_$type", "").orEmpty().split(',').mapNotNull { it.trim().toIntOrNull() }
+
+    fun setTasteGenres(type: String, ids: List<Int>) {
+        sp.edit().putString("taste_$type", ids.joinToString(",")).apply()
+    }
+
+    /** The last few titles opened from the details dialog, newest first, as a JSON array. */
+    fun watchedJson(): String = sp.getString("watched", "[]") ?: "[]"
+
+    fun setWatchedJson(json: String) {
+        sp.edit().putString("watched", json).apply()
+    }
+
     fun smartTilesJson(): String = sp.getString(KEY_SMART_TILES, "[]") ?: "[]"
 
     fun setSmartTilesJson(json: String) {
@@ -163,6 +184,10 @@ class LauncherPrefs(context: Context) {
         nightTheme = sp.getInt("s_nighttheme", 1).coerceIn(0, Themes.all.lastIndex),
         dashboard = sp.getBoolean("s_dash", false),
         roundness = sp.getInt("s_round", 0).coerceIn(0, Options.roundnessDp.lastIndex),
+        showTrending = sp.getBoolean("s_trending", true),
+        tmdbRegion = sp.getInt("s_region", 0).coerceIn(0, Options.regions.lastIndex),
+        titleMode = sp.getInt("s_tmode", 0).coerceIn(0, Options.titleModes.lastIndex),
+        showHero = sp.getBoolean("s_hero", true),
     )
 
     fun setSettings(s: AppSettings) {
@@ -186,6 +211,10 @@ class LauncherPrefs(context: Context) {
             .putInt("s_nighttheme", s.nightTheme)
             .putBoolean("s_dash", s.dashboard)
             .putInt("s_round", s.roundness)
+            .putBoolean("s_trending", s.showTrending)
+            .putInt("s_region", s.tmdbRegion)
+            .putInt("s_tmode", s.titleMode)
+            .putBoolean("s_hero", s.showHero)
             .apply()
     }
 
@@ -257,12 +286,13 @@ class LauncherPrefs(context: Context) {
         const val KEY_LAST_BOOT = "last_boot_count"
         const val KEY_HA_URL = "ha_url"
         const val KEY_HA_TOKEN = "ha_token"
+        const val KEY_TMDB = "tmdb_key"
         const val KEY_SMART_TILES = "smart_tiles"
         const val KEY_OVERRIDE = "home_override"
         const val KEY_STARTUP_PENDING = "startup_pending"
         const val MAX_RECENTS = 12
 
-        val SECRET_KEYS = setOf(KEY_HA_TOKEN)
-        val NOT_EXPORTED = setOf(KEY_HA_TOKEN, KEY_STARTUP_PENDING, KEY_LAST_BOOT)
+        val SECRET_KEYS = setOf(KEY_HA_TOKEN, KEY_TMDB)
+        val NOT_EXPORTED = setOf(KEY_HA_TOKEN, KEY_TMDB, KEY_STARTUP_PENDING, KEY_LAST_BOOT)
     }
 }

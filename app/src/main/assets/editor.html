@@ -280,9 +280,19 @@ function viewLook(v) {
     toggle("Show weather", "showWeather"),
     toggle("Use Fahrenheit", "fahrenheit"),
     toggle("Cards layout: weather and markets side by side under the first row", "dashboard"),
+    toggle("Show the Trending row (needs a TMDB key below)", "showTrending"),
+    toggle("Show the hero banner (big rotating backdrop)", "showHero"),
+    field("Titles shown (My tastes needs the taste test on the TV)", optionSelect(o.titleModes.map(function (_, i) { return i; }), o.titleModes, s.titleMode, set("titleMode"))),
+    field("Where-to-watch region", optionSelect(o.regions.map(function (_, i) { return i; }), o.regions, s.tmdbRegion, set("tmdbRegion"))),
     toggle("Show the forecast card (hours, 5 days, sunrise and sunset)", "showForecast"),
     toggle("Show the markets card (crypto prices)", "showCrypto"));
   v.appendChild(card);
+
+  var tmdbKey = h("input", { type: "password", placeholder: S.tmdb && S.tmdb.hasKey ? "Key saved (type to replace)" : "Paste your TMDB API key" });
+  v.appendChild(h("div", { class: "card" }, h("h2", null, "TMDB (trending movies and shows)"),
+    h("p", { class: "dim" }, "Free key from themoviedb.org: Settings > API. Either the short API Key or the long Read Access Token works. It stays on the box and is not included in backups. This product uses the TMDB API but is not endorsed or certified by TMDB."),
+    h("div", { class: "row" }, h("div", { class: "grow" }, tmdbKey),
+      h("button", { onclick: function () { act(api("/api/tmdb", { key: tmdbKey.value }), "TMDB connected"); } }, "Save"))));
 
   var coins = h("input", { placeholder: "btc, eth, sol", value: s.cryptoCoins });
   v.appendChild(h("div", { class: "card" }, h("h2", null, "Markets coins"),
