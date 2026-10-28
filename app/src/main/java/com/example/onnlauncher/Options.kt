@@ -146,4 +146,6 @@ data class TitleDetail(
     /** Installed apps that match a streaming service for this title. */
     val apps: List<AppEntry> = emptyList(),
     val bigPoster: androidx.compose.ui.graphics.ImageBitmap? = null,
+    /** YouTube video id of the trailer, or "" when TMDB has none. */
+    val trailerKey: String = "",
 )

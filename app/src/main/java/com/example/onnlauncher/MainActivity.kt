@@ -129,6 +129,7 @@ class MainActivity : ComponentActivity() {
                     },
                     onForceClose = ::forceClose,
                     onLaunchSearch = ::launchWithSearch,
+                    onPlayTrailer = ::playTrailer,
                     nowPlayingEnabled = ::isNowPlayingOn,
                     onSetupNowPlaying = ::setupNowPlaying,
                     dnsEnabled = ::isDnsOn,
@@ -313,6 +314,25 @@ class MainActivity : ComponentActivity() {
             toast("${app.label} didn't take the search, so I just opened it.")
             launch(app)
         }
+    }
+
+    /** Opens a YouTube video in the YouTube TV app, or any app that handles YouTube links. */
+    private fun playTrailer(videoId: String) {
+        val web = Uri.parse("https://www.youtube.com/watch?v=$videoId")
+        val attempts = listOf(
+            Intent(Intent.ACTION_VIEW, web).setPackage("com.google.android.youtube.tv"),
+            Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:$videoId")),
+            Intent(Intent.ACTION_VIEW, web),
+        )
+        for (intent in attempts) {
+            try {
+                startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                return
+            } catch (e: Exception) {
+                // try the next way in
+            }
+        }
+        toast("No app on this box could play the trailer. Install YouTube.")
     }
 
     /** Stops the background processes of every other app and reports roughly how much memory came back. */

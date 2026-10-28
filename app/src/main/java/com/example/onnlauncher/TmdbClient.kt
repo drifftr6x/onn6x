@@ -157,6 +157,19 @@ object TmdbClient {
         Providers(emptyList(), emptyList())
     }
 
+    /** YouTube id of the best trailer for a title (an official trailer if there is one), or "" if TMDB lists none. */
+    fun trailerKey(type: String, id: Int, key: String): String = try {
+        val results = JSONObject(get("/$type/$id/videos?language=en-US", key)).optJSONArray("results")
+        val videos = (0 until (results?.length() ?: 0)).map { results!!.getJSONObject(it) }
+            .filter { it.optString("site") == "YouTube" && it.optString("key").isNotBlank() }
+        val trailers = videos.filter { it.optString("type") == "Trailer" }
+        (trailers.firstOrNull { it.optBoolean("official") } ?: trailers.firstOrNull() ?: videos.firstOrNull { it.optString("type") == "Teaser" })
+            ?.optString("key").orEmpty()
+    } catch (e: Exception) {
+        if (e is KeyRejected) throw e
+        ""
+    }
+
     /** [size] is a TMDB image width such as "w185" or "w342". */
     fun image(path: String, size: String): ImageBitmap? = try {
         val connection = URL("https://image.tmdb.org/t/p/$size$path").openConnection() as HttpURLConnection

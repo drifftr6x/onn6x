@@ -825,12 +825,14 @@ fun TitleDialog(
     onSearch: (AppEntry) -> Unit,
     inList: Boolean,
     onToggleList: () -> Unit,
+    onTrailer: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val theme = LocalLauncherTheme.current
     val t = detail.title
     val heading = if (t.year.isNotBlank()) "${t.name} (${t.year})" else t.name
     val actions = buildList<Pair<String, () -> Unit>> {
+        if (detail.trailerKey.isNotBlank()) add("Watch trailer" to { onTrailer(detail.trailerKey) })
         add((if (inList) "Remove from my list" else "Add to my list") to onToggleList)
         detail.apps.forEach { app ->
             if (DeepLinks.supports(app.packageName)) add("Search for it in ${app.label}" to { onSearch(app) })

@@ -729,10 +729,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 TmdbClient.Providers(emptyList(), emptyList())
             }
             val big = TmdbClient.image(title.posterPath, "w342")
+            val trailer = try { TmdbClient.trailerKey(title.type, title.id, key) } catch (e: Exception) { "" }
             val apps = providers.streaming.mapNotNull { service -> installed.firstOrNull { matchesService(service, it.label) } }
                 .distinctBy { it.packageName }
             if (titleDetail?.title?.id == title.id) {
-                titleDetail = TitleDetail(title, false, providers.streaming, providers.rentOrBuy, apps, big)
+                titleDetail = TitleDetail(title, false, providers.streaming, providers.rentOrBuy, apps, big, trailer)
                 publish()
             }
         }

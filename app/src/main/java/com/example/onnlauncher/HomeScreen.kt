@@ -102,6 +102,7 @@ fun HomeScreen(
     onAppInfo: (String) -> Unit,
     onForceClose: (String, String) -> Unit,
     onLaunchSearch: (AppEntry, String) -> Unit,
+    onPlayTrailer: (String) -> Unit,
     nowPlayingEnabled: () -> Boolean,
     onSetupNowPlaying: () -> Unit,
     dnsEnabled: () -> Boolean,
@@ -437,6 +438,10 @@ fun HomeScreen(
                 },
                 inList = state.watchlist.any { it.id == detail.title.id && it.type == detail.title.type },
                 onToggleList = { vm.toggleWatchlist(detail.title) },
+                onTrailer = { id ->
+                    vm.closeTitle()
+                    onPlayTrailer(id)
+                },
                 onDismiss = vm::closeTitle,
             )
         }

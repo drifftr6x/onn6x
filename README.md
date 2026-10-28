@@ -119,6 +119,7 @@ Needs a free TMDB key: make an account at themoviedb.org, then Settings > API, a
 - **Poster row:** trending titles. Settings > "Titles shown" switches between Trending this week, Popular in your region (streaming services in your country), and My tastes.
 - **Taste test:** Settings > "Take the taste test...". Three rounds of six posters; pick the ones you'd watch and the launcher learns your favorite genres and switches to My tastes.
 - **Details dialog:** overview, rating and where it streams in your region, with a button for each matching app you have installed. Netflix, YouTube and Prime Video also get "Search for it in ..." (a search link that may stop working when those apps change; if an app refuses it, the launcher just opens the app).
+- **Trailers:** the details dialog has "Watch trailer" when TMDB lists one. It opens the trailer in the YouTube app, so YouTube must be installed.
 - **Continue watching:** the last six titles you opened from the details dialog or played in another app.
 - **Screensaver backdrops:** with a TMDB key, the idle screensaver crossfades through the trending backdrops with a slow zoom, the title in the corner and the drifting clock and weather on top. Turn it off in Settings > "Screensaver backdrops".
 - **Hero style:** Settings > "Hero style" switches between the banner and a full-screen "For You" look, where the backdrop fills the whole screen behind your rows.
