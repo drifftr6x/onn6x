@@ -963,6 +963,21 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         lastTouch = SystemClock.elapsedRealtime()
     }
 
+    /** Remote button presses only (not screen-on or resume), so a wake-up press can be told from a real second Home press. */
+    @Volatile
+    private var lastKeyAt = SystemClock.elapsedRealtime()
+
+    fun keyPressed() {
+        lastKeyAt = SystemClock.elapsedRealtime()
+    }
+
+    /**
+     * The quick menu is for a deliberate second Home press while you're using the launcher. If the
+     * screensaver is up, or no button has been pressed for a minute, this Home press is just waking the box.
+     */
+    fun homeIsWakeUp(): Boolean =
+        idle || SystemClock.elapsedRealtime() - lastKeyAt > WAKE_QUIET_MS
+
     fun setForeground(isForeground: Boolean) {
         foreground = isForeground
         touch()
@@ -1045,6 +1060,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     private companion object {
+        private const val WAKE_QUIET_MS = 60_000L
         const val MAX_ROW_NAME = 30
         val RESERVED_NAMES = listOf("All apps", "Hidden apps", "Recent", "Quick settings", "Smart home")
         const val WEATHER_REFRESH_MS = 30 * 60_000L

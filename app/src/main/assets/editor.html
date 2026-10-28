@@ -272,6 +272,7 @@ function viewLook(v) {
     toggle("Switch theme automatically at sunrise and sunset", "autoTheme"),
     field("Day theme", optionSelect(o.themes.map(function (_, i) { return i; }), o.themes, s.dayTheme, set("dayTheme"))),
     field("Night theme", optionSelect(o.themes.map(function (_, i) { return i; }), o.themes, s.nightTheme, set("nightTheme"))),
+    field("Font", optionSelect(o.fonts.map(function (_, i) { return i; }), o.fonts, s.fontIndex, set("fontIndex"))),
     field("Tile corners", optionSelect([0,1,2,3], o.roundness, s.roundness, set("roundness"))),
     field("Accent colour", optionSelect(o.accents.map(function (_, i) { return i; }), o.accents, s.accentIndex, set("accentIndex"))),
     field("Wallpaper changes every (minutes)", optionSelect(o.wallpaperMinutes, null, s.wallpaperMinutes, set("wallpaperMinutes"))),

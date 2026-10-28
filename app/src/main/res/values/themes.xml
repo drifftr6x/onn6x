@@ -4,5 +4,7 @@
         <item name="android:windowBackground">@android:color/black</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
+        <!-- No slide or fade when we are brought to the front, so the swap from the stock home screen is instant. -->
+        <item name="android:windowAnimationStyle">@null</item>
     </style>
 </resources>

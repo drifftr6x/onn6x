@@ -26,6 +26,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.tv.material3.Icon
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -1120,6 +1134,7 @@ private fun QuickRow(
                     label = if (action == QuickAction.SLEEP) "Sleep timer: $sleepLabel" else action.label,
                     tileWidth = width,
                     onClick = { onQuickAction(action) },
+                    icon = action.icon(),
                 )
             }
         }
@@ -1222,13 +1237,29 @@ private fun tileBorder(corner: Dp) = CardDefaults.border(
     ),
 )
 
-/** A text-only tile for shortcuts that aren't apps. */
+/** The picture shown above each Quick settings label. */
+internal fun QuickAction.icon(): ImageVector = when (this) {
+    QuickAction.ASSISTANT -> Icons.Filled.Mic
+    QuickAction.WIFI -> Icons.Filled.Wifi
+    QuickAction.BLUETOOTH -> Icons.Filled.Bluetooth
+    QuickAction.DISPLAY -> Icons.Filled.Tv
+    QuickAction.SOUND -> Icons.Filled.VolumeUp
+    QuickAction.DEVELOPER -> Icons.Filled.Code
+    QuickAction.SLEEP -> Icons.Filled.Timer
+    QuickAction.DEVICE_INFO -> Icons.Filled.Info
+    QuickAction.INSTALL_APK -> Icons.Filled.Download
+    QuickAction.PHONE_EDITOR -> Icons.Filled.PhoneAndroid
+    QuickAction.FREE_MEMORY -> Icons.Filled.Memory
+}
+
+/** A tile for shortcuts that aren't apps: a label, with an optional icon above it. */
 @Composable
 internal fun ShortcutTile(
     label: String,
     tileWidth: Dp,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    icon: ImageVector? = null,
 ) {
     val theme = LocalLauncherTheme.current
     Card(
@@ -1237,7 +1268,7 @@ internal fun ShortcutTile(
         border = tileBorder(theme.corner),
         modifier = modifier
             .width(tileWidth)
-            .height(tileWidth * 9 / 16),
+            .height(if (icon != null) tileWidth * 0.7f else tileWidth * 9 / 16),
     ) {
         Box(
             Modifier
@@ -1246,14 +1277,25 @@ internal fun ShortcutTile(
                 .padding(8.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = label,
-                color = LocalLauncherTheme.current.text,
-                fontSize = 14.sp,
-                textAlign = TextAlign.Center,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                if (icon != null) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = theme.text,
+                        modifier = Modifier.size(if (tileWidth < 150.dp) 22.dp else 30.dp),
+                    )
+                    Spacer(Modifier.height(4.dp))
+                }
+                Text(
+                    text = label,
+                    color = LocalLauncherTheme.current.text,
+                    fontSize = if (icon != null) 13.sp else 14.sp,
+                    textAlign = TextAlign.Center,
+                    maxLines = if (icon != null) 2 else 3,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }

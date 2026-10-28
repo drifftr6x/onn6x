@@ -33,7 +33,10 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.ExperimentalTvMaterial3Api
+import androidx.tv.material3.LocalTextStyle
 import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Typography
+import androidx.compose.ui.text.TextStyle
 import androidx.tv.material3.darkColorScheme
 import androidx.tv.material3.lightColorScheme
 
@@ -87,7 +90,10 @@ class MainActivity : ComponentActivity() {
             }
             val baseTheme = Themes.get(themeIndex)
             val cornerDp = Options.roundnessDp[s.roundness]
-            val theme = if (cornerDp > 0) baseTheme.copy(corner = cornerDp.dp) else baseTheme
+            val withCorner = if (cornerDp > 0) baseTheme.copy(corner = cornerDp.dp) else baseTheme
+            // A font picked in Settings wins over a theme's built-in monospace.
+            val family = AppFonts.family(s.fontIndex)
+            val theme = if (family != null) withCorner.copy(monospace = false) else withCorner
             val accent = if (state.settings.accentIndex == 0) {
                 theme.accent
             } else {
@@ -99,10 +105,13 @@ class MainActivity : ComponentActivity() {
             } else {
                 darkColorScheme(primary = accent, onPrimary = onAccent, border = accent)
             }
-            MaterialTheme(colorScheme = scheme) {
+            MaterialTheme(colorScheme = scheme, typography = Typography().withFamily(family)) {
                 // A home screen should never "go back" to anything.
                 BackHandler(enabled = true) { }
-                CompositionLocalProvider(LocalLauncherTheme provides theme) {
+                CompositionLocalProvider(
+                    LocalLauncherTheme provides theme,
+                    LocalTextStyle provides LocalTextStyle.current.merge(TextStyle(fontFamily = family)),
+                ) {
                 HomeScreen(
                     vm = vm,
                     onLaunch = ::launch,
@@ -139,7 +148,11 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         // The accessibility service sets this when Home is pressed while we're already showing.
-        if (intent.getBooleanExtra(EXTRA_QUICK_MENU, false)) vm.toggleQuickMenu()
+        if (intent.getBooleanExtra(EXTRA_QUICK_MENU, false)) {
+            // A Home press that is really just waking the box (or dismissing the screensaver) must not open the menu.
+            val doublePress = intent.getBooleanExtra(EXTRA_DOUBLE_PRESS, false)
+            if (!doublePress && vm.homeIsWakeUp()) vm.wake() else vm.toggleQuickMenu()
+        }
     }
 
     override fun onStart() {
@@ -166,6 +179,7 @@ class MainActivity : ComponentActivity() {
     @SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         vm.touch()
+        if (event.action == KeyEvent.ACTION_DOWN) vm.keyPressed()
         if (event.action == KeyEvent.ACTION_DOWN && vm.cancelAutoStart()) return true
         if (vm.state.value.idle) {
             if (event.action == KeyEvent.ACTION_UP) vm.wake()
@@ -401,6 +415,7 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         /** Set by the accessibility service when Home is pressed on the home screen. */
+        const val EXTRA_DOUBLE_PRESS = "double_press"
         const val EXTRA_QUICK_MENU = "quick_menu"
         private const val STARTUP_OK_MS = 4_000L
         private const val ADGUARD_DNS = "dns.adguard-dns.com"

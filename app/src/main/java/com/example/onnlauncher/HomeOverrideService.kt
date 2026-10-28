@@ -1,7 +1,10 @@
 package com.example.onnlauncher
 
 import android.accessibilityservice.AccessibilityService
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -35,6 +38,16 @@ class HomeOverrideService : AccessibilityService() {
     private var lastBounce = 0L
     private var ourSince = 0L
     private var sleepEndsAt = 0L
+    private var screenChangedAt = 0L
+
+    /** Remembers when the screen last went off or on, so the press that wakes the box never counts as "Home on the launcher". */
+    private val screenReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            screenChangedAt = SystemClock.elapsedRealtime()
+            if (intent?.action == Intent.ACTION_SCREEN_OFF) ourForeground = false
+            Log.d(TAG, "screen event: ${intent?.action}")
+        }
+    }
 
     private val sleepRunnable = Runnable {
         sleepEndsAt = 0L
@@ -45,12 +58,25 @@ class HomeOverrideService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         instance = this
+        try {
+            registerReceiver(screenReceiver, IntentFilter().apply {
+                addAction(Intent.ACTION_SCREEN_OFF)
+                addAction(Intent.ACTION_SCREEN_ON)
+            })
+        } catch (e: Exception) {
+            Log.w(TAG, "Couldn't watch screen state: ${e.message}")
+        }
         Log.d(TAG, "Service connected")
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
         handler.removeCallbacks(sleepRunnable)
         sleepEndsAt = 0L
+        try {
+            unregisterReceiver(screenReceiver)
+        } catch (e: Exception) {
+            // not registered
+        }
         if (instance === this) instance = null
         return super.onUnbind(intent)
     }
@@ -86,7 +112,10 @@ class HomeOverrideService : AccessibilityService() {
         // we still bring our screen to the front (harmless if it is already there) but skip the menu.
         val quickMenu = ourForeground
         val withinGrace = quickMenu && (now - ourSince < QUICK_MENU_GRACE_MS || now - lastBounce < QUICK_MENU_GRACE_MS)
-        val openMenu = quickMenu && !withinGrace
+        val justWoke = now - screenChangedAt < WAKE_GRACE_MS
+        // A second Home press a few seconds after the first is deliberate, even if no other button was pressed.
+        val doublePress = (now - lastBounce) in QUICK_MENU_GRACE_MS..DOUBLE_PRESS_MS
+        val openMenu = quickMenu && !withinGrace && !justWoke
         if (!quickMenu) {
             while (recentBounces.isNotEmpty() && now - recentBounces.first() > LOOP_WINDOW_MS) {
                 recentBounces.removeFirst()
@@ -103,9 +132,14 @@ class HomeOverrideService : AccessibilityService() {
 
         try {
             val intent = Intent(this, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-            if (openMenu) intent.putExtra(MainActivity.EXTRA_QUICK_MENU, true)
-            startActivity(intent)
+                .addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_NO_ANIMATION,
+                )
+            if (openMenu) {
+                intent.putExtra(MainActivity.EXTRA_QUICK_MENU, true)
+                intent.putExtra(MainActivity.EXTRA_DOUBLE_PRESS, doublePress)
+            }
+            startActivity(intent, android.app.ActivityOptions.makeCustomAnimation(this, 0, 0).toBundle())
         } catch (e: Exception) {
             Log.w(TAG, "Couldn't start launcher: ${e.message}")
         }
@@ -191,6 +225,8 @@ class HomeOverrideService : AccessibilityService() {
 
         private const val DEBOUNCE_MS = 600L
         private const val QUICK_MENU_GRACE_MS = 2_000L
+        private const val WAKE_GRACE_MS = 8_000L
+        private const val DOUBLE_PRESS_MS = 10_000L
         private const val LOOP_LIMIT = 5
         private const val LOOP_WINDOW_MS = 10_000L
     }

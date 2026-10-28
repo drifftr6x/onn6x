@@ -127,6 +127,8 @@ This product uses the TMDB API but is not endorsed or certified by TMDB. Movie a
 
 ## Other additions
 
+- **Fonts:** Settings > "Font" (or the phone editor) switches the whole launcher between system fonts (System, Serif, Monospace, Condensed, Casual) and four bundled ones: Poppins, Orbitron, Lora and Press Start 2P. "Theme default" keeps each theme's own look. Wide fonts like Pixel and Orbitron can shorten long tile labels. The bundled fonts are free under the SIL Open Font License.
+
 - **Free up memory** (Quick settings): stops the background processes of other apps and reports roughly how much came back. Android only lets a normal app stop background processes, so this is gentler than a real force stop.
 - **Ad-blocking DNS (AdGuard)** (Settings): switches the box's Private DNS to AdGuard to block many ad and tracker domains. Needs a one-time grant from your PC: `adb shell pm grant com.example.onnlauncher android.permission.WRITE_SECURE_SETTINGS`. It does not block ads inside YouTube. Turn it off from the same Settings entry.
 - **Check for updates** (Settings): looks at the newest GitHub release of this project and tells you if it is newer than the installed version.

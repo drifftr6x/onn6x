@@ -37,6 +37,8 @@ data class AppSettings(
     val heroFull: Boolean = false,
     /** Screensaver shows the rotating TMDB backdrops (when a TMDB key is set) instead of just the gradient. */
     val idleBackdrops: Boolean = true,
+    /** Index into [AppFonts.names]; 0 keeps each theme's own font. */
+    val fontIndex: Int = 0,
 ) {
     val hasLocation: Boolean get() = !weatherLat.isNaN() && !weatherLon.isNaN()
 }

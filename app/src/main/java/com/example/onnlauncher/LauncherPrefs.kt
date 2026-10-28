@@ -192,6 +192,7 @@ class LauncherPrefs(context: Context) {
         showHero = sp.getBoolean("s_hero", true),
         heroFull = sp.getBoolean("s_herofull", false),
         idleBackdrops = sp.getBoolean("s_idlebd", true),
+        fontIndex = sp.getInt("s_font", 0).coerceIn(0, AppFonts.names.lastIndex),
     )
 
     fun setSettings(s: AppSettings) {
@@ -221,6 +222,7 @@ class LauncherPrefs(context: Context) {
             .putBoolean("s_hero", s.showHero)
             .putBoolean("s_herofull", s.heroFull)
             .putBoolean("s_idlebd", s.idleBackdrops)
+            .putInt("s_font", s.fontIndex)
             .apply()
     }
 

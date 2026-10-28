@@ -348,6 +348,11 @@ fun SettingsDialog(
             },
         )
         add(
+            "Font: ${AppFonts.names[settings.fontIndex]}" to {
+                onChange { it.copy(fontIndex = (it.fontIndex + 1) % AppFonts.names.size) }
+            },
+        )
+        add(
             "Tile corners: ${Options.roundnessNames[settings.roundness]}" to {
                 onChange { it.copy(roundness = (it.roundness + 1) % Options.roundnessDp.size) }
             },
@@ -645,6 +650,7 @@ fun QuickMenuDialog(
                     label = if (action == QuickAction.SLEEP) "Sleep timer: $sleepLabel" else action.label,
                     tileWidth = tileWidth,
                     onClick = { onQuickAction(action) },
+                    icon = action.icon(),
                     modifier = if (index == 0) Modifier.focusRequester(firstShortcut) else Modifier,
                 )
             }
