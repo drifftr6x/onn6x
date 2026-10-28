@@ -46,6 +46,9 @@ A hackable Android TV home screen for the Onn 4K Pro, in Kotlin with Compose for
 2. Build > Build Bundle(s) / APK(s) > Build APK(s). APK: `app/build/outputs/apk/debug/app-debug.apk`.
 
 ## Install
+
+**Ready-made APK:** download `app-release.apk` from the [Releases](https://github.com/drifftr6x/onn6x/releases) page and install it with `adb install -r app-release.apk` (turn on Developer options and ADB debugging on the box first). The release APK is signed with a debug key, so each new version installs over the old one without losing your settings. Settings > "Check for updates" compares the installed version with the newest release here.
+
 ```
 adb install app-debug.apk
 adb shell am start -n com.example.onnlauncher/.MainActivity
