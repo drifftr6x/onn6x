@@ -26,7 +26,7 @@
         android:allowBackup="true"
         android:icon="@drawable/app_logo"
         android:banner="@drawable/app_banner"
-        android:label="onn6x Launcher"
+        android:label="@string/app_name"
         android:supportsRtl="true"
         android:usesCleartextTraffic="true"
         android:theme="@style/Theme.Launcher">
@@ -82,7 +82,7 @@
         <service
             android:name=".NowPlayingService"
             android:exported="true"
-            android:label="onn6x What's playing"
+            android:label="@string/now_playing_label"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />

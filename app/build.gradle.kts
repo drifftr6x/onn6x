@@ -9,7 +9,8 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.example.onnlauncher"
+        // Fork branch: its own app ID, so it installs next to the main launcher instead of replacing it.
+        applicationId = "com.example.onnlauncher.fork"
         minSdk = 28
         targetSdk = 34
         versionCode = 3

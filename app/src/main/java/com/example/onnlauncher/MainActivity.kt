@@ -399,7 +399,7 @@ class MainActivity : ComponentActivity() {
         try {
             startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         } catch (e: Exception) {
-            toast("On your PC run: adb shell cmd notification allow_listener com.example.onnlauncher/com.example.onnlauncher.NowPlayingService")
+            toast("On your PC run: adb shell cmd notification allow_listener $packageName/${NowPlayingService::class.java.name}")
         }
     }
 
@@ -422,13 +422,13 @@ class MainActivity : ComponentActivity() {
                 toast("Ad-blocking DNS is on (AdGuard). It does not block YouTube's own ads.")
             }
         } catch (e: SecurityException) {
-            toast("Needs a one-time permission. On your PC run: adb shell pm grant com.example.onnlauncher android.permission.WRITE_SECURE_SETTINGS")
+            toast("Needs a one-time permission. On your PC run: adb shell pm grant $packageName android.permission.WRITE_SECURE_SETTINGS")
         }
     }
 
     private fun installApk(file: File) {
         if (!packageManager.canRequestPackageInstalls()) {
-            toast("Allow \"Install unknown apps\" for onn6x Launcher, then try again.")
+            toast("Allow \"Install unknown apps\" for ${getString(R.string.app_name)}, then try again.")
             startSafely(
                 Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName")),
             )

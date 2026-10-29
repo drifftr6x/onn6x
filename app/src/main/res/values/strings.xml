@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="home_override_description">Opens onn6x Launcher when the Home button brings up the stock Google TV home screen, runs the sleep timer, and launches apps from remote buttons you choose to remap. It only watches window changes and the remote buttons you map, and never reads screen contents.</string>
-    <string name="home_override_label">onn6x Launcher Home button</string>
+    <string name="app_name">onn6x Fork</string>
+    <string name="now_playing_label">onn6x Fork What\'s playing</string>
+    <string name="home_override_description">Opens onn6x Fork when the Home button brings up the stock Google TV home screen, runs the sleep timer, and launches apps from remote buttons you choose to remap. It only watches window changes and the remote buttons you map, and never reads screen contents.</string>
+    <string name="home_override_label">onn6x Fork Home button</string>
 </resources>

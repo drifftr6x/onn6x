@@ -731,7 +731,7 @@ fun ApkInstallDialog(
                 fontSize = 15.sp,
             )
             Text(
-                "adb push app.apk /sdcard/Android/data/com.example.onnlauncher/files/apks/",
+                "adb push app.apk /sdcard/Android/data/${context.packageName}/files/apks/",
                 color = LocalLauncherTheme.current.text,
                 fontSize = 13.sp,
                 modifier = Modifier.padding(vertical = 8.dp),

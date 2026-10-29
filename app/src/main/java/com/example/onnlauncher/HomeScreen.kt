@@ -58,6 +58,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -115,6 +116,7 @@ fun HomeScreen(
     val settings = state.settings
     val theme = LocalLauncherTheme.current
     val tileWidth = Options.tileWidths[settings.tileSize].dp
+    val ownPackage = LocalContext.current.packageName
 
     var menu by remember { mutableStateOf<MenuTarget?>(null) }
     var nameDialog by remember { mutableStateOf<NameDialog?>(null) }
@@ -301,7 +303,7 @@ fun HomeScreen(
                 if (pkg in state.customImagePackages) {
                     add("Remove custom tile picture" to { vm.removeTileImage(pkg) })
                 }
-                if (pkg != "com.example.onnlauncher") add("Force close" to { onForceClose(pkg, target.app.label) })
+                if (pkg != ownPackage) add("Force close" to { onForceClose(pkg, target.app.label) })
                 add("App info" to { onAppInfo(pkg) })
                 add("Uninstall" to { onUninstall(pkg) })
             }
