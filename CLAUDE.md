@@ -1,7 +1,7 @@
 # onn6x Launcher
 
 Custom Android TV / Google TV home launcher for an Onn 4K Pro (Android 14). Kotlin + Jetpack Compose for TV.
-Package `com.example.onnlauncher`. Current version 1.1.0 (versionCode 3). Repo: github.com/drifftr6x/onn6x.
+Package `com.example.onnlauncher`. Current version 1.1.1 (versionCode 4). Repo: github.com/drifftr6x/onn6x.
 
 ## Fork branch
 Branch `fork` builds a separate app: applicationId `com.example.onnlauncher.fork`, label "onn6x Fork" (`res/values/strings.xml`). The Kotlin package/namespace stays `com.example.onnlauncher`, so merges from `main` stay simple, but keep `applicationId` and `strings.xml` as they are on this branch when merging.
