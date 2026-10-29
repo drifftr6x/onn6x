@@ -1,7 +1,7 @@
 # onn6x Launcher
 
 Custom Android TV / Google TV home launcher for an Onn 4K Pro (Android 14). Kotlin + Jetpack Compose for TV.
-Package `com.example.onnlauncher`. Current version 1.1.0 (versionCode 3). Repo: github.com/drifftr6x/onn6x.
+Package `com.example.onnlauncher`. Current version 1.1.1 (versionCode 4). Repo: github.com/drifftr6x/onn6x.
 
 ## Environment
 - Windows PC. Android Studio project at `C:\onn-launcher`. Box is reached over ADB wireless at `11.1.1.87:5555`.
