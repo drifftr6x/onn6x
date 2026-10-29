@@ -8,7 +8,12 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -16,6 +21,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 
 data class RowState(val name: String, val apps: List<AppEntry>)
 
@@ -104,7 +110,14 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val posterCache = object : LruCache<Int, ImageBitmap>(POSTER_CACHE_KB) {
         override fun sizeOf(key: Int, value: ImageBitmap) = (value.width * value.height * 4 / 1024).coerceAtLeast(1)
     }
-    private val heroCache = HashMap<Int, Pair<androidx.compose.ui.graphics.ImageBitmap?, androidx.compose.ui.graphics.ImageBitmap?>>()
+    private val heroCache = ConcurrentHashMap<Int, Pair<ImageBitmap?, ImageBitmap?>>()
+    // Shared by every picture download, so startup and trending together stay at a few at a time.
+    private val imageSlots = Semaphore(IMAGE_DOWNLOADS)
+
+    /** Like map, but runs [block] (blocking picture downloads) a few at a time; keeps the order. */
+    private suspend fun <T, R> List<T>.mapParallel(block: (T) -> R): List<R> = coroutineScope {
+        map { async(Dispatchers.IO) { imageSlots.withPermit { block(it) } } }.awaitAll()
+    }
     private var quickMenu = false
     private var safeMode = false
     private var safeReason = ""
@@ -133,6 +146,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private var lastRefresh = 0L
 
     init {
+        TmdbClient.imageDir = File(application.cacheDir, "tmdb")
         refresh()
         startWeather()
         startCrypto()
@@ -561,7 +575,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                                 TmdbClient.discover(key, region, tasteMovie, tasteTv)
                             else -> TmdbClient.trending(key)
                         }.ifEmpty { TmdbClient.trending(key) }
-                        trending = items.mapIndexed { index, item -> buildTitle(item, key, hero = index < HERO_COUNT) }
+                        trending = items.withIndex().toList()
+                            .mapParallel { (index, item) -> buildTitle(item, key, hero = index < HERO_COUNT) }
                         // Keep only banner pictures for titles still shown; posters trim themselves.
                         heroCache.keys.retainAll(items.map { it.id }.toSet())
                         publish()
@@ -618,10 +633,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     /** Blocking (downloads posters): background thread only. */
-    private fun decodeTitles(json: String): List<TrendingTitle> {
+    private suspend fun decodeTitles(json: String): List<TrendingTitle> {
         val array = try { JSONArray(json) } catch (e: Exception) { JSONArray() }
-        return (0 until array.length()).mapNotNull { i ->
-            val o = array.optJSONObject(i) ?: return@mapNotNull null
+        return (0 until array.length()).mapNotNull { array.optJSONObject(it) }.mapParallel { o ->
             val id = o.optInt("id")
             val path = o.optString("posterPath")
             val poster = poster(id, path)
@@ -707,7 +721,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
         viewModelScope.launch(Dispatchers.IO) {
             val pool = try {
-                TmdbClient.trending(key).take(18).map { item ->
+                TmdbClient.trending(key).take(18).mapParallel { item ->
                     val poster = poster(item.id, item.posterPath)
                     TrendingTitle(item.id, item.type, item.name, item.year, item.overview, item.rating, item.posterPath, poster, item.genreIds)
                 }
@@ -1201,6 +1215,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         const val HERO_COUNT = 6
         /** About 80 small posters (w185 is ~200 KB decoded). */
         const val POSTER_CACHE_KB = 16 * 1024
+        const val IMAGE_DOWNLOADS = 6
         const val TRENDING_REFRESH_MS = 6 * 60 * 60_000L
         const val TRENDING_RETRY_MS = 5 * 60_000L
         const val IDLE_CHECK_MS = 3_000L
