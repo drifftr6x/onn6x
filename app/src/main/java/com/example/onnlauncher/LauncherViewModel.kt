@@ -2,6 +2,7 @@ package com.example.onnlauncher
 
 import android.app.Application
 import android.os.SystemClock
+import android.util.LruCache
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -99,7 +100,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private var lastPlaybackNoted = ""
     private var tasteOpen = false
     private var tastePool: List<TrendingTitle> = emptyList()
-    private val posterCache = HashMap<Int, androidx.compose.ui.graphics.ImageBitmap>()
+    // Thread-safe and capped by memory; the least recently used posters are dropped first.
+    private val posterCache = object : LruCache<Int, ImageBitmap>(POSTER_CACHE_KB) {
+        override fun sizeOf(key: Int, value: ImageBitmap) = (value.width * value.height * 4 / 1024).coerceAtLeast(1)
+    }
     private val heroCache = HashMap<Int, Pair<androidx.compose.ui.graphics.ImageBitmap?, androidx.compose.ui.graphics.ImageBitmap?>>()
     private var quickMenu = false
     private var safeMode = false
@@ -558,10 +562,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                             else -> TmdbClient.trending(key)
                         }.ifEmpty { TmdbClient.trending(key) }
                         trending = items.mapIndexed { index, item -> buildTitle(item, key, hero = index < HERO_COUNT) }
-                        // Keep only pictures for titles still shown, so memory stays small.
-                        val ids = items.map { it.id }.toSet()
-                        posterCache.keys.retainAll(ids)
-                        heroCache.keys.retainAll(ids)
+                        // Keep only banner pictures for titles still shown; posters trim themselves.
+                        heroCache.keys.retainAll(items.map { it.id }.toSet())
                         publish()
                     } catch (e: Exception) {
                         ok = false
@@ -575,9 +577,13 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    /** Small poster from the cache, or downloaded and cached. Blocking: background thread only. */
+    private fun poster(id: Int, path: String): ImageBitmap? =
+        posterCache.get(id) ?: TmdbClient.image(path, "w185")?.also { posterCache.put(id, it) }
+
     /** Poster for every title; the wide picture and logo only for the first few (the hero banner). */
     private fun buildTitle(item: TmdbClient.Item, key: String, hero: Boolean): TrendingTitle {
-        val poster = posterCache[item.id] ?: TmdbClient.image(item.posterPath, "w185")?.also { posterCache[item.id] = it }
+        val poster = poster(item.id, item.posterPath)
         var backdrop: androidx.compose.ui.graphics.ImageBitmap? = null
         var logo: androidx.compose.ui.graphics.ImageBitmap? = null
         if (hero && item.backdropPath.isNotBlank()) {
@@ -618,7 +624,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             val o = array.optJSONObject(i) ?: return@mapNotNull null
             val id = o.optInt("id")
             val path = o.optString("posterPath")
-            val poster = posterCache[id] ?: TmdbClient.image(path, "w185")?.also { posterCache[id] = it }
+            val poster = poster(id, path)
             TrendingTitle(
                 id, o.optString("type"), o.optString("name"), o.optString("year"),
                 o.optString("overview"), o.optDouble("rating", 0.0), path, poster,
@@ -684,7 +690,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             } catch (e: Exception) {
                 null
             } ?: return@launch
-            val poster = posterCache[hit.id] ?: TmdbClient.image(hit.posterPath, "w185")?.also { posterCache[hit.id] = it }
+            val poster = poster(hit.id, hit.posterPath)
             noteWatched(
                 TrendingTitle(hit.id, hit.type, hit.name, hit.year, hit.overview, hit.rating, hit.posterPath, poster, hit.genreIds),
             )
@@ -702,7 +708,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch(Dispatchers.IO) {
             val pool = try {
                 TmdbClient.trending(key).take(18).map { item ->
-                    val poster = posterCache[item.id] ?: TmdbClient.image(item.posterPath, "w185")?.also { posterCache[item.id] = it }
+                    val poster = poster(item.id, item.posterPath)
                     TrendingTitle(item.id, item.type, item.name, item.year, item.overview, item.rating, item.posterPath, poster, item.genreIds)
                 }
             } catch (e: Exception) {
@@ -1193,6 +1199,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         const val CRYPTO_REFRESH_MS = 5 * 60_000L
         const val CRYPTO_RETRY_MS = 2 * 60_000L
         const val HERO_COUNT = 6
+        /** About 80 small posters (w185 is ~200 KB decoded). */
+        const val POSTER_CACHE_KB = 16 * 1024
         const val TRENDING_REFRESH_MS = 6 * 60 * 60_000L
         const val TRENDING_RETRY_MS = 5 * 60_000L
         const val IDLE_CHECK_MS = 3_000L

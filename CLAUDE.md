@@ -55,4 +55,4 @@ State: `AndroidViewModel` (`LauncherViewModel`) exposing `StateFlow<UiState>`. S
 `git add . && git commit && git push`, then a GitHub Release with a new `vX.Y.Z` tag and `app-release.apk` attached (rename to `onn6x-launcher-X.Y.Z.apk`). `*.apk`, `build/`, `local.properties` are git-ignored.
 
 ## Ideas not done
-Kids profile with PIN, poster cache size limit, SMB support.
+Kids profile with PIN, SMB support.
