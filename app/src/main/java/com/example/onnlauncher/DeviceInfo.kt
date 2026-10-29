@@ -1,5 +1,6 @@
 package com.example.onnlauncher
 
+import java.util.Locale
 import android.app.ActivityManager
 import android.content.Context
 import android.os.Build
@@ -74,7 +75,7 @@ object DeviceInfo {
 
     private fun formatBytes(bytes: Long): String {
         val gb = bytes / 1_073_741_824.0
-        return if (gb >= 1) String.format("%.1f GB", gb) else String.format("%d MB", bytes / 1_048_576)
+        return if (gb >= 1) String.format(Locale.US, "%.1f GB", gb) else String.format(Locale.US, "%d MB", bytes / 1_048_576)
     }
 
     private fun formatUptime(millis: Long): String {
