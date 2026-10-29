@@ -973,7 +973,7 @@ private fun HeroInfo(shown: TrendingTitle, onClick: (TrendingTitle) -> Unit) {
                     Text(title.name, color = Color.White, fontSize = 38.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
                 Text(
-                    text = listOf(title.year, "★ " + String.format("%.1f", title.rating), if (title.type == "tv") "Series" else "Movie")
+                    text = listOf(title.year, "★ " + String.format(Locale.US, "%.1f", title.rating), if (title.type == "tv") "Series" else "Movie")
                         .filter { it.isNotBlank() }.joinToString("  ·  "),
                     color = Color(0xFFE0E6F0),
                     fontSize = 16.sp,
@@ -1072,7 +1072,7 @@ private fun HeroBanner(shown: TrendingTitle, onClick: (TrendingTitle) -> Unit) {
                         Text(title.name, color = Color.White, fontSize = 30.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     }
                     Text(
-                        text = listOf(title.year, "★ " + String.format("%.1f", title.rating), if (title.type == "tv") "Series" else "Movie")
+                        text = listOf(title.year, "★ " + String.format(Locale.US, "%.1f", title.rating), if (title.type == "tv") "Series" else "Movie")
                             .filter { it.isNotBlank() }.joinToString("  ·  "),
                         color = Color(0xFFE0E6F0),
                         fontSize = 14.sp,

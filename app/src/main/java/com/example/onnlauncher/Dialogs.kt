@@ -2,6 +2,7 @@
 
 package com.example.onnlauncher
 
+import java.util.Locale
 import android.os.SystemClock
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
@@ -862,7 +863,7 @@ fun TitleDialog(
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    "${if (t.type == "tv") "Series" else "Movie"}  ·  ★ ${String.format("%.1f", t.rating)}",
+                    "${if (t.type == "tv") "Series" else "Movie"}  ·  ★ ${String.format(Locale.US, "%.1f", t.rating)}",
                     color = theme.subtle,
                     fontSize = 14.sp,
                 )

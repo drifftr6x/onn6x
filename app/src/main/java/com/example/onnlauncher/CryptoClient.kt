@@ -1,5 +1,6 @@
 package com.example.onnlauncher
 
+import java.util.Locale
 import org.json.JSONArray
 import java.net.HttpURLConnection
 import java.net.URL
@@ -14,11 +15,11 @@ object CryptoClient {
     data class Coin(val id: String, val symbol: String, val price: Double, val change24h: Double) {
         val priceText: String
             get() = when {
-                price >= 1000 -> String.format("$%,.0f", price)
-                price >= 1 -> String.format("$%,.2f", price)
-                else -> String.format("$%.4f", price)
+                price >= 1000 -> String.format(Locale.US, "$%,.0f", price)
+                price >= 1 -> String.format(Locale.US, "$%,.2f", price)
+                else -> String.format(Locale.US, "$%.4f", price)
             }
-        val changeText: String get() = String.format("%+.1f%%", change24h)
+        val changeText: String get() = String.format(Locale.US, "%+.1f%%", change24h)
     }
 
     private val shortcuts = mapOf(
