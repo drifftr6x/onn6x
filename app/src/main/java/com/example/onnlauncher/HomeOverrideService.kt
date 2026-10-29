@@ -39,6 +39,8 @@ class HomeOverrideService : AccessibilityService() {
     private var ourSince = 0L
     private var sleepEndsAt = 0L
     private var screenChangedAt = 0L
+    @Volatile
+    private var trailerUntil = 0L
 
     /** Remembers when the screen last went off or on, so the press that wakes the box never counts as "Home on the launcher". */
     private val screenReceiver = object : BroadcastReceiver() {
@@ -145,8 +147,30 @@ class HomeOverrideService : AccessibilityService() {
         }
     }
 
+    /** Brings the launcher back to the front a moment after Back is pressed inside the trailer. */
+    private val returnRunnable = Runnable {
+        if (SystemClock.elapsedRealtime() > trailerUntil || ourForeground) return@Runnable
+        trailerUntil = 0L
+        try {
+            startActivity(
+                Intent(this, MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_NO_ANIMATION),
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "Couldn't return to launcher after trailer: ${e.message}")
+        }
+    }
+
     override fun onKeyEvent(event: KeyEvent): Boolean {
         val code = event.keyCode
+        // YouTube keeps its own home screen under the player, so Back from a trailer would stop there.
+        // While a trailer started from the launcher is recent, Back also sends you home.
+        if (code == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0 &&
+            SystemClock.elapsedRealtime() < trailerUntil
+        ) {
+            handler.removeCallbacks(returnRunnable)
+            handler.postDelayed(returnRunnable, TRAILER_RETURN_DELAY_MS)
+        }
         if (code in KeyBus.BLOCKED) return false
 
         if (KeyBus.learning) {
@@ -194,6 +218,11 @@ class HomeOverrideService : AccessibilityService() {
         @Volatile
         var instance: HomeOverrideService? = null
 
+        /** Called when the launcher starts a trailer: for the next few minutes, Back inside YouTube returns to the launcher. */
+        fun armTrailerReturn() {
+            instance?.trailerUntil = SystemClock.elapsedRealtime() + TRAILER_WINDOW_MS
+        }
+
         /** Minutes left on the sleep timer, rounded up, or 0 if none is running. */
         fun sleepRemainingMinutes(): Int {
             val service = instance ?: return 0
@@ -227,6 +256,8 @@ class HomeOverrideService : AccessibilityService() {
         private const val QUICK_MENU_GRACE_MS = 2_000L
         private const val WAKE_GRACE_MS = 8_000L
         private const val DOUBLE_PRESS_MS = 10_000L
+        private const val TRAILER_WINDOW_MS = 10 * 60_000L
+        private const val TRAILER_RETURN_DELAY_MS = 500L
         private const val LOOP_LIMIT = 5
         private const val LOOP_WINDOW_MS = 10_000L
     }

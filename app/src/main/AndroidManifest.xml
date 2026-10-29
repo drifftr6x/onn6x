@@ -17,6 +17,8 @@
     <!-- Needed for the APK installer -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
+    <!-- Keeps Wi-Fi and the CPU awake while the phone editor is running, so uploads don't stall -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Optional: lets the ad-blocking DNS toggle work after a one-time "adb shell pm grant" -->
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
 

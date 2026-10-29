@@ -119,6 +119,22 @@ class LauncherPrefs(context: Context) {
         edit.apply()
     }
 
+    // ---- wallpaper source (NAS / web folder) ----
+
+    fun wpUrl(): String = sp.getString("wp_url", "").orEmpty()
+    fun wpUser(): String = sp.getString("wp_user", "").orEmpty()
+    fun wpPass(): String = sp.getString(KEY_WP_PASS, "").orEmpty()
+    fun wpInsecure(): Boolean = sp.getBoolean("wp_insecure", false)
+    fun wpStatus(): String = sp.getString("wp_status", "").orEmpty()
+    fun setWpStatus(text: String) { sp.edit().putString("wp_status", text).apply() }
+
+    /** A null [pass] keeps the saved password (the phone editor never shows it back). */
+    fun setWpSource(url: String, user: String, pass: String?, insecure: Boolean) {
+        val e = sp.edit().putString("wp_url", url.trim()).putString("wp_user", user.trim()).putBoolean("wp_insecure", insecure)
+        if (pass != null) e.putString(KEY_WP_PASS, pass)
+        e.apply()
+    }
+
     fun tmdbKey(): String = sp.getString(KEY_TMDB, "").orEmpty()
 
     fun setTmdbKey(key: String) {
@@ -295,12 +311,13 @@ class LauncherPrefs(context: Context) {
         const val KEY_HA_URL = "ha_url"
         const val KEY_HA_TOKEN = "ha_token"
         const val KEY_TMDB = "tmdb_key"
+        const val KEY_WP_PASS = "wp_pass"
         const val KEY_SMART_TILES = "smart_tiles"
         const val KEY_OVERRIDE = "home_override"
         const val KEY_STARTUP_PENDING = "startup_pending"
         const val MAX_RECENTS = 12
 
-        val SECRET_KEYS = setOf(KEY_HA_TOKEN, KEY_TMDB)
-        val NOT_EXPORTED = setOf(KEY_HA_TOKEN, KEY_TMDB, KEY_STARTUP_PENDING, KEY_LAST_BOOT)
+        val SECRET_KEYS = setOf(KEY_HA_TOKEN, KEY_TMDB, KEY_WP_PASS)
+        val NOT_EXPORTED = setOf(KEY_HA_TOKEN, KEY_TMDB, KEY_WP_PASS, KEY_STARTUP_PENDING, KEY_LAST_BOOT, "wp_status")
     }
 }

@@ -42,6 +42,8 @@ data class UiState(
     val tasteOpen: Boolean = false,
     val tastePool: List<TrendingTitle> = emptyList(),
     val hasTmdbKey: Boolean = false,
+    /** Host of the wallpaper source, or "" when none is set. */
+    val wallpaperSource: String = "",
     /** Whether the Home-button override service is allowed to bounce the stock launcher. */
     val overrideEnabled: Boolean = true,
     val sleepLabel: String = "Off",
@@ -132,6 +134,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         startCrypto()
         startTrending()
         loadWatched()
+        startWallpaperAutoSync()
         startIdleWatcher()
     }
 
@@ -231,6 +234,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             tasteOpen = tasteOpen,
             tastePool = tastePool,
             hasTmdbKey = prefs.tmdbKey().isNotBlank(),
+            wallpaperSource = prefs.wpUrl().substringAfter("://").substringAfter("@").substringBefore("/"),
             overrideEnabled = prefs.overrideEnabled(),
             sleepLabel = sleepLabel(),
             quickMenu = quickMenu,
@@ -475,6 +479,59 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         startTrending()
         return "TMDB connected ($count titles this week)."
     }
+
+    // ---- wallpaper source: a NAS or web folder whose pictures are copied to the box ----
+
+    private var wallpaperSyncing = false
+
+    /** Saves the address (and optionally login). A blank address turns the source off. */
+    fun saveWallpaperSource(url: String, user: String, pass: String?, insecure: Boolean) {
+        prefs.setWpSource(url, user, pass, insecure)
+        if (url.isBlank()) prefs.setWpStatus("")
+        publish()
+    }
+
+    /** Copies the pictures now. Reports in plain words; safe to call while a sync is already running. */
+    fun syncWallpapers(onResult: (String) -> Unit) {
+        if (prefs.wpUrl().isBlank()) {
+            onResult("Set a wallpaper source first.")
+            return
+        }
+        if (wallpaperSyncing) {
+            onResult("Already syncing wallpapers...")
+            return
+        }
+        wallpaperSyncing = true
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                try {
+                    WallpaperSync.sync(getApplication(), prefs.wpUrl(), prefs.wpUser(), prefs.wpPass(), prefs.wpInsecure())
+                } catch (e: Exception) {
+                    WallpaperSync.Result(false, "Sync failed: ${e.message ?: "unknown error"}")
+                }
+            }
+            wallpaperSyncing = false
+            val stamp = java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT)
+                .format(java.util.Date())
+            prefs.setWpStatus("$stamp: ${result.message}")
+            publish()
+            onResult(result.message)
+        }
+    }
+
+    /** Syncs shortly after start and then every few hours while a source is set. */
+    private fun startWallpaperAutoSync() {
+        viewModelScope.launch {
+            delay(30_000)
+            while (true) {
+                if (prefs.wpUrl().isNotBlank()) syncWallpapers { }
+                delay(WALLPAPER_SYNC_MS)
+            }
+        }
+    }
+
+    /** Address, username and the self-signed-certificate switch (the password is never read back). */
+    fun wallpaperSourceInfo(): Triple<String, String, Boolean> = Triple(prefs.wpUrl(), prefs.wpUser(), prefs.wpInsecure())
 
     fun setTmdbKey(key: String, onResult: (String) -> Unit) {
         viewModelScope.launch {
@@ -914,12 +971,76 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             editorDialog = true
             publish()
 
-            editorStopJob?.cancel()
-            editorStopJob = launch {
-                delay(EDITOR_MAX_MS)
-                stopEditor()
-            }
+            acquireEditorLocks()
+            scheduleEditorStop()
         }
+    }
+
+    private var editorExpiresAt = 0L
+
+    private fun scheduleEditorStop() {
+        editorStopJob?.cancel()
+        editorExpiresAt = SystemClock.elapsedRealtime() + EDITOR_MAX_MS
+        editorStopJob = viewModelScope.launch {
+            delay(EDITOR_MAX_MS)
+            stopEditor()
+        }
+    }
+
+    fun editorSecondsLeft(): Long = ((editorExpiresAt - SystemClock.elapsedRealtime()) / 1000).coerceAtLeast(0)
+
+    /** "Keep open" in the phone editor: restarts the countdown. Returns the seconds left. */
+    fun extendEditor(): Long {
+        if (editorServer != null) scheduleEditorStop()
+        return editorSecondsLeft()
+    }
+
+    private var editorWakeLock: android.os.PowerManager.WakeLock? = null
+    private var editorWifiLock: android.net.wifi.WifiManager.WifiLock? = null
+
+    /** While the editor runs, keep the CPU and Wi-Fi awake so uploads don't stall when the box dozes. */
+    @Suppress("DEPRECATION")
+    private fun acquireEditorLocks() {
+        releaseEditorLocks()
+        val app = getApplication<Application>()
+        try {
+            val pm = app.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
+            editorWakeLock = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "onn6x:editor").apply {
+                setReferenceCounted(false)
+                acquire(EDITOR_MAX_MS * 2)
+            }
+        } catch (e: Exception) {
+            // best effort
+        }
+        try {
+            val wm = app.applicationContext.getSystemService(android.content.Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+            val mode = if (android.os.Build.VERSION.SDK_INT >= 29) {
+                android.net.wifi.WifiManager.WIFI_MODE_FULL_LOW_LATENCY
+            } else {
+                android.net.wifi.WifiManager.WIFI_MODE_FULL_HIGH_PERF
+            }
+            editorWifiLock = wm.createWifiLock(mode, "onn6x:editor").apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        } catch (e: Exception) {
+            // best effort
+        }
+    }
+
+    private fun releaseEditorLocks() {
+        try {
+            editorWakeLock?.let { if (it.isHeld) it.release() }
+        } catch (e: Exception) {
+            // already released
+        }
+        try {
+            editorWifiLock?.let { if (it.isHeld) it.release() }
+        } catch (e: Exception) {
+            // already released
+        }
+        editorWakeLock = null
+        editorWifiLock = null
     }
 
     /** Hides the info card but leaves the editor running. */
@@ -933,6 +1054,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         editorStopJob = null
         editorServer?.stop()
         editorServer = null
+        releaseEditorLocks()
         editor = null
         editorDialog = false
         publish()
@@ -1057,11 +1179,13 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     override fun onCleared() {
         editorServer?.stop()
+        releaseEditorLocks()
         super.onCleared()
     }
 
     private companion object {
         private const val WAKE_QUIET_MS = 60_000L
+        private const val WALLPAPER_SYNC_MS = 6L * 60 * 60 * 1000
         const val MAX_ROW_NAME = 30
         val RESERVED_NAMES = listOf("All apps", "Hidden apps", "Recent", "Quick settings", "Smart home")
         const val WEATHER_REFRESH_MS = 30 * 60_000L
@@ -1072,7 +1196,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         const val TRENDING_REFRESH_MS = 6 * 60 * 60_000L
         const val TRENDING_RETRY_MS = 5 * 60_000L
         const val IDLE_CHECK_MS = 3_000L
-        const val EDITOR_MAX_MS = 30 * 60_000L
+        const val EDITOR_MAX_MS = 60 * 60_000L
         const val STALE_MS = 10 * 60_000L
     }
 }

@@ -80,6 +80,15 @@ class MainActivity : ComponentActivity() {
                     tick = System.currentTimeMillis()
                 }
             }
+            // Keep the TV awake while the phone editor is open, so uploads aren't cut off by sleep.
+            val editorOpen = state.editor != null
+            LaunchedEffect(editorOpen) {
+                if (editorOpen) {
+                    window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                } else {
+                    window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                }
+            }
             val s = state.settings
             val themeIndex = if (s.autoTheme) {
                 val day = state.weather?.forecast?.isDaylight(tick / 1000)
@@ -316,23 +325,38 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** Opens a YouTube video in the YouTube TV app, or any app that handles YouTube links. */
+    /**
+     * Opens a YouTube video in a regular YouTube app. YouTube Kids also answers YouTube links, so it is
+     * skipped: it would open its own limited catalogue instead of the trailer.
+     */
     private fun playTrailer(videoId: String) {
         val web = Uri.parse("https://www.youtube.com/watch?v=$videoId")
-        val attempts = listOf(
-            Intent(Intent.ACTION_VIEW, web).setPackage("com.google.android.youtube.tv"),
-            Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:$videoId")),
-            Intent(Intent.ACTION_VIEW, web),
-        )
-        for (intent in attempts) {
+        val candidates = listOf(Uri.parse("vnd.youtube:$videoId"), web)
+            .flatMap { uri -> packageManager.queryIntentActivities(Intent(Intent.ACTION_VIEW, uri), 0) }
+            .map { it.activityInfo.packageName }
+            .filter { !it.contains("kids", ignoreCase = true) && it.startsWith("com.google.android.youtube") }
+            .distinct()
+        val pkg = candidates.firstOrNull { it == "com.google.android.youtube.tv" } ?: candidates.firstOrNull()
+        if (pkg == null) {
+            toast("YouTube isn't installed on this box (YouTube Kids can't play trailers). Install YouTube from the Play Store.")
+            return
+        }
+        try {
+            // CLEAR_TASK starts YouTube fresh with the trailer as its first screen, so Back leaves YouTube
+            // and returns here instead of stepping back through YouTube's own home screen.
+            startActivity(Intent(Intent.ACTION_VIEW, web).setPackage(pkg).addFlags(TRAILER_FLAGS))
+            HomeOverrideService.armTrailerReturn()
+        } catch (e: Exception) {
             try {
-                startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                return
-            } catch (e: Exception) {
-                // try the next way in
+                startActivity(
+                    Intent(Intent.ACTION_VIEW, Uri.parse("vnd.youtube:$videoId")).setPackage(pkg)
+                        .addFlags(TRAILER_FLAGS),
+                )
+                HomeOverrideService.armTrailerReturn()
+            } catch (e2: Exception) {
+                toast("YouTube didn't open the trailer.")
             }
         }
-        toast("No app on this box could play the trailer. Install YouTube.")
     }
 
     /** Stops the background processes of every other app and reports roughly how much memory came back. */
@@ -436,6 +460,7 @@ class MainActivity : ComponentActivity() {
     companion object {
         /** Set by the accessibility service when Home is pressed on the home screen. */
         const val EXTRA_DOUBLE_PRESS = "double_press"
+        private const val TRAILER_FLAGS = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         const val EXTRA_QUICK_MENU = "quick_menu"
         private const val STARTUP_OK_MS = 4_000L
         private const val ADGUARD_DNS = "dns.adguard-dns.com"

@@ -5,36 +5,65 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Launcher editor</title>
 <style>
-  :root { --bg:#10131a; --card:#1a1f2b; --line:#2a3142; --text:#e8ebf2; --dim:#8b93a7; --accent:#4f9dff; --bad:#ff6b6b; --good:#4cd08a; }
+  :root { --bg:#0e1118; --bg2:#141824; --card:#171c29; --line:#262d40; --text:#eef1f7; --dim:#8c95ab; --accent:#5aa2ff; --accent2:#7c6cff; --bad:#ff6b6b; --good:#4cd08a; --warn:#f5b84b; --r:14px; }
   @media (prefers-color-scheme: light) {
-    :root { --bg:#f3f5f9; --card:#fff; --line:#d9deea; --text:#161a24; --dim:#5d667a; --accent:#1769e0; --bad:#c62828; --good:#1b8a4e; }
+    :root { --bg:#f2f4f9; --bg2:#e9edf5; --card:#ffffff; --line:#dbe0ec; --text:#161a24; --dim:#5d667a; --accent:#1769e0; --accent2:#5b4bd6; --bad:#c62828; --good:#1b8a4e; --warn:#b36b00; }
   }
-  * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.4 system-ui,sans-serif; }
-  header { position:sticky; top:0; z-index:5; background:var(--bg); border-bottom:1px solid var(--line); padding:10px 16px 0; }
-  h1 { font-size:18px; margin:0 0 8px; }
-  nav { display:flex; gap:4px; overflow-x:auto; padding-bottom:8px; }
-  nav button { flex:none; }
-  main { padding:16px; max-width:760px; margin:0 auto; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:12px; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  header { position:sticky; top:0; z-index:5; background:color-mix(in srgb,var(--bg) 92%,transparent); backdrop-filter:blur(10px); border-bottom:1px solid var(--line); padding:12px 16px 0; }
+  .top { display:flex; align-items:center; gap:10px; max-width:760px; margin:0 auto 10px; }
+  h1 { font-size:19px; margin:0; flex:1; letter-spacing:.2px; }
+  h1 b { background:linear-gradient(90deg,var(--accent),var(--accent2)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .pill { display:inline-flex; align-items:center; gap:6px; font-size:13px; padding:4px 10px; border-radius:999px; background:var(--card); border:1px solid var(--line); color:var(--dim); }
+  .pill i { width:8px; height:8px; border-radius:50%; background:var(--good); display:inline-block; }
+  .pill.off i { background:var(--bad); animation:blink 1s infinite; }
+  .pill.off { color:var(--bad); border-color:var(--bad); }
+  .pill.warn i { background:var(--warn); }
+  @keyframes blink { 50% { opacity:.25; } }
+  nav { display:flex; gap:6px; overflow-x:auto; padding-bottom:10px; max-width:760px; margin:0 auto; scrollbar-width:none; }
+  nav::-webkit-scrollbar { display:none; }
+  nav button { flex:none; border-radius:999px; padding:6px 16px; min-height:36px; background:transparent; border-color:transparent; color:var(--dim); }
+  nav button.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+  main { padding:16px 16px 90px; max-width:760px; margin:0 auto; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:var(--r); padding:14px; margin-bottom:14px; box-shadow:0 1px 2px rgba(0,0,0,.15); }
   .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
   .grow { flex:1; min-width:0; }
   .dim { color:var(--dim); font-size:14px; }
-  button, select, input { font:inherit; color:var(--text); background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:8px 12px; min-height:40px; }
+  button, select, input { font:inherit; color:var(--text); background:var(--bg2); border:1px solid var(--line); border-radius:10px; padding:8px 12px; min-height:42px; }
+  input:focus, select:focus, button:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
   input[type=text], input[type=password], input[type=search], input:not([type]) { width:100%; }
-  button { cursor:pointer; }
-  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  select { max-width:100%; }
+  button { cursor:pointer; transition:transform .06s, background .15s; }
+  button:active { transform:scale(.97); }
+  button:disabled { opacity:.4; cursor:default; }
+  button.primary { background:linear-gradient(135deg,var(--accent),var(--accent2)); border-color:transparent; color:#fff; font-weight:600; }
   button.danger { color:var(--bad); }
-  button.active { border-color:var(--accent); color:var(--accent); }
-  .chip { display:inline-flex; align-items:center; gap:4px; background:var(--bg); border:1px solid var(--line); border-radius:999px; padding:2px 4px 2px 12px; margin:3px 4px 3px 0; }
+  button.small { min-height:32px; padding:3px 10px; font-size:14px; }
+  .chip { display:inline-flex; align-items:center; gap:2px; background:var(--bg2); border:1px solid var(--line); border-radius:999px; padding:2px 4px 2px 6px; margin:3px 4px 3px 0; }
+  .chip img { width:22px; height:22px; border-radius:6px; margin-right:4px; }
   .chip button { min-height:30px; padding:2px 8px; border:none; background:none; }
-  .msg { position:fixed; left:16px; right:16px; bottom:16px; padding:12px 16px; border-radius:10px; background:var(--card); border:1px solid var(--line); z-index:9; max-width:728px; margin:0 auto; }
+  .msg { position:fixed; left:16px; right:16px; bottom:16px; padding:12px 16px; border-radius:12px; background:var(--card); border:1px solid var(--line); z-index:9; max-width:728px; margin:0 auto; box-shadow:0 8px 30px rgba(0,0,0,.35); }
   .msg.bad { border-color:var(--bad); } .msg.good { border-color:var(--good); }
-  label.field { display:block; margin:8px 0; }
-  label.field span { display:block; color:var(--dim); font-size:14px; margin-bottom:2px; }
-  progress { width:100%; }
+  label.field { display:block; margin:10px 0; }
+  label.field span { display:block; color:var(--dim); font-size:14px; margin-bottom:3px; }
   h2 { font-size:16px; margin:0 0 8px; }
-  #login { max-width:360px; margin:15vh auto; padding:16px; }
+  #login { max-width:360px; margin:15vh auto; padding:18px; }
+  .appicon { width:44px; height:44px; border-radius:11px; background:var(--bg2); object-fit:cover; flex:none; }
+  .drop { border:2px dashed var(--line); border-radius:var(--r); padding:22px 14px; text-align:center; color:var(--dim); transition:border-color .15s, background .15s; }
+  .drop.over { border-color:var(--accent); background:color-mix(in srgb,var(--accent) 10%,transparent); color:var(--text); }
+  .drop button { margin-top:8px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; margin-top:12px; }
+  .thumb { position:relative; border-radius:12px; overflow:hidden; background:var(--bg2); border:1px solid var(--line); aspect-ratio:16/9; }
+  .thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+  .thumb .cap { position:absolute; left:0; right:0; bottom:0; padding:14px 8px 5px; font-size:12px; color:#fff; background:linear-gradient(transparent,rgba(0,0,0,.72)); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .thumb button { position:absolute; top:6px; right:6px; min-height:30px; width:30px; padding:0; border-radius:50%; background:rgba(0,0,0,.6); border:none; color:#fff; }
+  .up { display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid var(--line); }
+  .up:first-child { border-top:none; }
+  .bar { height:6px; border-radius:3px; background:var(--bg2); overflow:hidden; margin-top:5px; }
+  .bar div { height:100%; width:0; background:linear-gradient(90deg,var(--accent),var(--accent2)); transition:width .15s; }
+  .up.err .bar div { background:var(--bad); } .up.dup .bar div { background:var(--warn); } .up.done .bar div { background:var(--good); }
+  .filerow { display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid var(--line); }
 </style>
 </head>
 <body>
@@ -47,7 +76,7 @@
 </div>
 <div id="app" hidden>
   <header>
-    <h1>Launcher editor</h1>
+    <div class="top"><h1><b>onn6x</b> editor</h1><span id="pill" class="pill"><i></i><span id="pilltxt">Connected</span></span></div>
     <nav id="tabs"></nav>
   </header>
   <main id="view"></main>
@@ -93,7 +122,7 @@ function toast(text, kind) {
 function api(path, body, raw) {
   var opts = { method: body === undefined ? "GET" : "POST", headers: { "X-Pin": pin } };
   if (body !== undefined) opts.body = raw ? body : JSON.stringify(body);
-  return fetch(path, opts).then(function (r) {
+  return fetch(path, opts).catch(function () { throw new Error("Can't reach the TV. Check it is on and on the same Wi-Fi."); }).then(function (r) {
     return r.text().then(function (t) {
       var data = null;
       try { data = JSON.parse(t); } catch (e) {}
@@ -118,6 +147,63 @@ function upload(path, file, onProgress) {
     };
     x.onerror = function () { reject(new Error("Connection lost")); };
     x.send(file);
+  });
+}
+
+function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+function plain(method, url, body, timeout) {
+  return new Promise(function (resolve, reject) {
+    var x = new XMLHttpRequest();
+    x.open(method, url);
+    x.setRequestHeader("X-Pin", pin);
+    x.timeout = timeout || 30000;
+    x.onload = function () {
+      var d = null;
+      try { d = JSON.parse(x.responseText); } catch (e) {}
+      resolve({ status: x.status, data: d });
+    };
+    x.onerror = function () { reject(new Error("Connection lost")); };
+    x.ontimeout = function () { reject(new Error("Timed out")); };
+    x.send(body === undefined ? null : body);
+  });
+}
+
+// Sends a file in pieces. If the link drops, waits, asks the TV how much it already has, and carries on from there.
+var CHUNK = 1024 * 1024;
+function uploadFile(kind, file, onProgress, shouldCancel, onResult) {
+  var base = "/api/upload?kind=" + kind + "&name=" + encodeURIComponent(file.name) + "&total=" + file.size;
+  function probe() {
+    return plain("POST", base + "&probe=1", "", 8000).then(function (r) {
+      if (r.status === 401) throw new Error("Wrong PIN");
+      if (r.status >= 400) throw new Error((r.data && r.data.error) || "HTTP " + r.status);
+      return r.data.have || 0;
+    });
+  }
+  function step(offset, fails) {
+    if (shouldCancel && shouldCancel()) return Promise.reject(new Error("Cancelled"));
+    if (offset >= file.size) return Promise.resolve();
+    var end = Math.min(offset + CHUNK, file.size);
+    return plain("POST", base + "&offset=" + offset, file.slice(offset, end), 60000).then(function (r) {
+      if (r.status === 409 && r.data) { return step(r.data.have || 0, fails); }
+      if (r.status === 401) throw new Error("Wrong PIN");
+      if (r.status >= 400) throw new Error((r.data && r.data.error) || "HTTP " + r.status);
+      if (onProgress) onProgress(end / file.size);
+      if (r.data && r.data.duplicateOf && onResult) onResult(r.data);
+      return step(end, 0);
+    }, function (err) {
+      if (fails >= 40) throw new Error("Gave up after the connection kept dropping");
+      var wait = Math.min(1000 * Math.pow(1.6, fails), 8000);
+      if (onProgress) onProgress(null, "Reconnecting...");
+      return sleep(wait).then(probe).then(function (have) {
+        return step(have, fails + 1);
+      }, function () { return step(offset, fails + 1); });
+    });
+  }
+  if (file.size === 0) return Promise.reject(new Error("That file is empty"));
+  return probe().catch(function () { return 0; }).then(function (have) {
+    // A leftover partial file from an earlier try can be resumed only if it is a prefix we sent; start fresh unless the TV asks us to resync.
+    return step(0, 0);
   });
 }
 
@@ -201,7 +287,7 @@ function viewRows(v) {
       } }, "Delete")));
     var chips = h("div");
     row.apps.forEach(function (pkg, i) {
-      chips.appendChild(h("span", { class: "chip" }, label(pkg),
+      chips.appendChild(h("span", { class: "chip" }, h("img", { loading: "lazy", alt: "", src: "/api/icon?pkg=" + encodeURIComponent(pkg) + "&pin=" + encodeURIComponent(pin) }), label(pkg),
         h("button", { disabled: i === 0, onclick: function () { act(api("/api/rows/moveapp", { pkg: pkg, row: row.name, delta: -1 })); } }, "◀"),
         h("button", { disabled: i === row.apps.length - 1, onclick: function () { act(api("/api/rows/moveapp", { pkg: pkg, row: row.name, delta: 1 })); } }, "▶"),
         h("button", { class: "danger", onclick: function () { act(api("/api/rows/removeapp", { pkg: pkg, row: row.name })); } }, "✕")));
@@ -240,7 +326,8 @@ function appCard(a) {
     act(upload("/api/app/image?pkg=" + encodeURIComponent(a.pkg) + "&ext=" + encodeURIComponent(ext), f), "Picture saved");
   };
   return h("div", { class: "card" },
-    h("div", { class: "row" },
+    h("div", { class: "row", style: "flex-wrap:nowrap" },
+      h("img", { class: "appicon", loading: "lazy", alt: "", src: "/api/icon?pkg=" + encodeURIComponent(a.pkg) + "&pin=" + encodeURIComponent(pin) }),
       h("div", { class: "grow" }, h("strong", null, a.custom || a.label), a.custom ? h("span", { class: "dim" }, "  (" + a.label + ")") : null,
         h("div", { class: "dim" }, a.pkg + (a.hidden ? " · hidden" : ""))),
       ),
@@ -296,6 +383,28 @@ function viewLook(v) {
     h("p", { class: "dim" }, "Free key from themoviedb.org: Settings > API. Either the short API Key or the long Read Access Token works. It stays on the box and is not included in backups. This product uses the TMDB API but is not endorsed or certified by TMDB."),
     h("div", { class: "row" }, h("div", { class: "grow" }, tmdbKey),
       h("button", { onclick: function () { act(api("/api/tmdb", { key: tmdbKey.value }), "TMDB connected"); } }, "Save"))));
+
+  var wp = S.wallpaperSource || {};
+  var wpUrl = h("input", { placeholder: "http://nas:5005/photos/  or  https://nas/webdav/wallpapers/", value: wp.url || "" });
+  var wpUser = h("input", { placeholder: "Username (optional)", value: wp.user || "", autocomplete: "off" });
+  var wpPass = h("input", { type: "password", placeholder: wp.hasPass ? "Password saved (type to replace)" : "Password (optional)", autocomplete: "new-password" });
+  var wpInsecure = h("input", { type: "checkbox", style: "min-height:auto;width:auto" });
+  wpInsecure.checked = !!wp.insecure;
+  function wpSave() {
+    return api("/api/wallpapers/source", { url: wpUrl.value, user: wpUser.value, pass: wpPass.value, insecure: wpInsecure.checked });
+  }
+  v.appendChild(h("div", { class: "card" }, h("h2", null, "Wallpaper source (NAS or web folder)"),
+    h("p", { class: "dim" }, "Pictures in this folder are copied to the box and rotate as wallpapers. Works with a WebDAV folder (Synology, QNAP, Nextcloud, TrueNAS), a plain web folder that lists its files, or one direct picture link. smb:// shares are not supported: share the folder over WebDAV or HTTP on the NAS. Only jpg, png and webp directly inside the folder are used. The password stays on the box and is not included in backups."),
+    h("div", { class: "row" }, h("div", { class: "grow" }, wpUrl)),
+    h("div", { class: "row" }, h("div", { class: "grow" }, wpUser), h("div", { class: "grow" }, wpPass)),
+    h("label", { class: "row", style: "margin:8px 0" }, wpInsecure, "Accept a self-signed HTTPS certificate (only for a NAS you trust on your own network)"),
+    h("div", { class: "row" },
+      h("button", { onclick: function () { act(wpSave(), "Wallpaper source saved"); } }, "Save"),
+      h("button", { onclick: function () {
+        toast("Syncing...", "good");
+        act(wpSave().then(function () { return api("/api/wallpapers/sync", {}); }).then(function (d) { toast(d.message, "good"); }), null);
+      } }, "Save and sync now")),
+    h("p", { class: "dim" }, wp.status ? "Last sync: " + wp.status : "Not synced yet. It also syncs by itself every few hours.")));
 
   var coins = h("input", { placeholder: "btc, eth, sol", value: s.cryptoCoins });
   v.appendChild(h("div", { class: "card" }, h("h2", null, "Markets coins"),
@@ -374,34 +483,94 @@ function viewHome(v) {
 // ---------- Files ----------
 function size(n) { return n > 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB"; }
 
-function fileSection(title, hint, accept, list, uploadPath, deletePath) {
-  var bar = h("progress", { max: 1, value: 0, hidden: true });
-  var input = h("input", { type: "file", accept: accept, multiple: true, hidden: true });
-  input.onchange = function () {
-    var files = Array.prototype.slice.call(input.files);
-    var chain = Promise.resolve();
-    files.forEach(function (f) {
-      chain = chain.then(function () {
-        bar.hidden = false; bar.value = 0;
-        return upload(uploadPath + "?name=" + encodeURIComponent(f.name), f, function (p) { bar.value = p; });
-      });
-    });
-    chain.then(function () { toast("Uploaded", "good"); return load(); })
-      .catch(function (e) { toast(e.message, "bad"); bar.hidden = true; });
-  };
-  var card = h("div", { class: "card" }, h("h2", null, title), h("p", { class: "dim" }, hint),
-    h("button", { class: "primary", onclick: function () { input.click(); } }, "Upload"), input, bar);
-  list.forEach(function (f) {
-    card.appendChild(h("div", { class: "row", style: "margin-top:8px" },
-      h("div", { class: "grow" }, f.name, h("span", { class: "dim" }, "  " + size(f.size))),
-      h("button", { class: "danger", onclick: function () { act(api(deletePath, { name: f.name })); } }, "Delete")));
+var queue = [];   // upload items shared across tabs so a tab switch doesn't lose the tray
+var running = false;
+var onQueue = function () {};
+
+function pump() {
+  if (running) return;
+  var next = queue.filter(function (q) { return q.state === "wait"; })[0];
+  if (!next) return;
+  running = true; next.state = "run"; onQueue();
+  uploadFile(next.kind, next.file, function (p, text) {
+    if (p != null) next.progress = p;
+    next.note = text || "";
+    onQueue();
+  }, function () { return next.cancel; }, function (d) { next.dup = d.duplicateOf; }).then(function () {
+    next.state = next.dup ? "dup" : "done"; next.progress = 1; next.note = next.dup ? "Already have this picture as " + next.dup + ", skipped" : "";
+  }, function (e) {
+    next.state = "err"; next.note = e.message;
+  }).then(function () {
+    running = false; onQueue();
+    if (!queue.some(function (q) { return q.state === "wait" || q.state === "run"; })) {
+      load().catch(function () {});
+    }
+    pump();
   });
+}
+
+function enqueue(kind, files) {
+  Array.prototype.forEach.call(files, function (f) {
+    var same = queue.some(function (q) { return q.state === "wait" && q.kind === kind && q.file.name === f.name && q.file.size === f.size; });
+    if (same) return;
+    queue.push({ kind: kind, file: f, state: "wait", progress: 0, note: "" });
+  });
+  onQueue(); pump();
+}
+
+function fileSection(title, hint, accept, kind, list, deletePath, thumbs) {
+  var input = h("input", { type: "file", accept: accept, multiple: true, hidden: true });
+  input.onchange = function () { enqueue(kind, input.files); input.value = ""; };
+  var tray = h("div");
+  var drop = h("div", { class: "drop" }, h("div", null, "Drag files here, or"),
+    h("button", { class: "primary", onclick: function () { input.click(); } }, "Choose files"), input);
+  ["dragenter", "dragover"].forEach(function (n) { drop.addEventListener(n, function (e) { e.preventDefault(); drop.classList.add("over"); }); });
+  ["dragleave", "drop"].forEach(function (n) { drop.addEventListener(n, function (e) { e.preventDefault(); drop.classList.remove("over"); }); });
+  drop.addEventListener("drop", function (e) { if (e.dataTransfer && e.dataTransfer.files.length) enqueue(kind, e.dataTransfer.files); });
+
+  function paint() {
+    tray.textContent = "";
+    queue.filter(function (q) { return q.kind === kind; }).forEach(function (q) {
+      var bar = h("div", { class: "bar" }, h("div", { style: "width:" + Math.round(q.progress * 100) + "%" }));
+      var status = q.state === "wait" ? "Waiting" : q.state === "run" ? (q.note || Math.round(q.progress * 100) + "%") : q.state === "done" ? "Done" : q.note;
+      tray.appendChild(h("div", { class: "up " + q.state },
+        h("div", { class: "grow" }, h("div", null, q.file.name, h("span", { class: "dim" }, "  " + size(q.file.size))),
+          bar, h("div", { class: "dim" }, status)),
+        q.state === "err" ? h("button", { class: "small", onclick: function () { q.state = "wait"; q.progress = 0; q.note = ""; onQueue(); pump(); } }, "Retry") : null,
+        q.state === "wait" || q.state === "err" ? h("button", { class: "small", onclick: function () { q.cancel = true; q.state = "gone"; queue.splice(queue.indexOf(q), 1); onQueue(); } }, "✕") : null));
+    });
+  }
+  onQueue = function () { if (document.body.contains(tray)) paint(); };
+  paint();
+
+  var card = h("div", { class: "card" }, h("h2", null, title), h("p", { class: "dim" }, hint), drop, tray);
+  if (thumbs && list.length) {
+    var grid = h("div", { class: "grid" });
+    list.forEach(function (f) {
+      grid.appendChild(h("div", { class: "thumb" },
+        h("img", { loading: "lazy", alt: f.name, src: "/api/wallpaper/thumb?name=" + encodeURIComponent(f.name) + "&pin=" + encodeURIComponent(pin) }),
+        h("div", { class: "cap" }, f.name + " · " + size(f.size)),
+        h("button", { title: "Delete", onclick: function () {
+          if (confirm("Delete " + f.name + "?")) act(api(deletePath, { name: f.name }), "Deleted");
+        } }, "✕")));
+    });
+    card.appendChild(grid);
+  } else {
+    list.forEach(function (f) {
+      card.appendChild(h("div", { class: "filerow" },
+        h("div", { class: "grow" }, f.name, h("span", { class: "dim" }, "  " + size(f.size))),
+        h("button", { class: "danger small", onclick: function () {
+          if (confirm("Delete " + f.name + "?")) act(api(deletePath, { name: f.name }), "Deleted");
+        } }, "Delete")));
+    });
+  }
+  if (!list.length) card.appendChild(h("p", { class: "dim" }, "Nothing here yet."));
   return card;
 }
 
 function viewFiles(v) {
-  v.appendChild(fileSection("Wallpapers", "Pictures rotate on the home screen. 16:9 works best.", "image/*", S.wallpapers, "/api/wallpaper", "/api/wallpaper/delete"));
-  v.appendChild(fileSection("APK installer", "Upload an app file, then on the TV open Settings → Install APKs.", ".apk", S.apks, "/api/apk", "/api/apk/delete"));
+  v.appendChild(fileSection("Wallpapers", "Pictures rotate on the home screen. 16:9 works best. Large uploads are sent in pieces and pick up where they left off if the Wi-Fi drops.", "image/*", "wallpaper", S.wallpapers, "/api/wallpaper/delete", true));
+  v.appendChild(fileSection("APK installer", "Upload an app file, then on the TV open Settings → Install APKs.", ".apk", "apk", S.apks, "/api/apk/delete", false));
 }
 
 // ---------- Backup ----------
@@ -424,6 +593,38 @@ function viewBackup(v) {
       } }, "Download backup"),
       h("button", { onclick: function () { input.click(); } }, "Restore from file"), input)));
 }
+
+// ---------- connection watch ----------
+var misses = 0;
+function setPill(cls, text) {
+  var p = document.getElementById("pill");
+  p.className = "pill " + cls;
+  document.getElementById("pilltxt").textContent = text;
+}
+function ping() {
+  if (document.getElementById("app").hidden) return;
+  plain("GET", "/api/ping", undefined, 4000).then(function (r) {
+    if (r.status === 401) { showLogin("Wrong PIN."); return; }
+    var back = misses > 0;
+    misses = 0;
+    var left = r.data && r.data.left;
+    if (left != null && left < 300) {
+      setPill("warn", "Closing in " + Math.max(1, Math.round(left / 60)) + " min · tap to keep open");
+    } else {
+      setPill("", "Connected");
+    }
+    if (back) { toast("Reconnected", "good"); load().catch(function () {}); }
+  }, function () {
+    misses++;
+    if (misses >= 2) setPill("off", "Reconnecting...");
+  });
+}
+document.getElementById("pill").onclick = function () {
+  api("/api/extend", {}).then(function (d) { toast("Editor stays open for another " + Math.round(d.left / 60) + " min", "good"); ping(); }).catch(function (e) { toast(e.message, "bad"); });
+};
+setInterval(ping, 4000);
+document.addEventListener("visibilitychange", function () { if (!document.hidden) ping(); });
+window.addEventListener("online", ping);
 
 // ---------- start ----------
 document.getElementById("go").onclick = function () {

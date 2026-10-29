@@ -296,6 +296,9 @@ fun SettingsDialog(
     onSetCoins: () -> Unit,
     hasTmdbKey: Boolean,
     onSetTmdbKey: () -> Unit,
+    wallpaperSource: String,
+    onSetWallpaperSource: () -> Unit,
+    onSyncWallpapers: () -> Unit,
     onTasteTest: () -> Unit,
     nowPlayingOn: Boolean,
     onSetupNowPlaying: () -> Unit,
@@ -367,6 +370,8 @@ fun SettingsDialog(
                 onChange { it.copy(wallpaperMinutes = Options.next(Options.wallpaperMinutes, it.wallpaperMinutes)) }
             },
         )
+        add("Wallpaper source (NAS): ${wallpaperSource.ifBlank { "not set" }}" to onSetWallpaperSource)
+        if (wallpaperSource.isNotBlank()) add("Sync wallpapers now" to onSyncWallpapers)
         add(
             "Screensaver after: ${if (settings.idleMinutes == 0) "Off" else "${settings.idleMinutes} min"}" to {
                 onChange { it.copy(idleMinutes = Options.next(Options.idleMinutes, it.idleMinutes)) }
@@ -769,7 +774,7 @@ fun PhoneEditorDialog(
         Spacer(Modifier.size(12.dp))
         Text(info.url, color = LocalLauncherTheme.current.text, fontSize = 30.sp)
         Spacer(Modifier.size(4.dp))
-        Text("PIN  ${info.pin}", color = Color(0xFFFFCA28), fontSize = 30.sp)
+        Text("PIN  ${info.pin}", color = Color(0xFFFF5252), fontSize = 30.sp)
         Text(
             "It stops by itself after 30 minutes, or when you leave the launcher.",
             color = LocalLauncherTheme.current.subtle,

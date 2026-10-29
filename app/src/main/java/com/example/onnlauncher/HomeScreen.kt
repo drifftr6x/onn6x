@@ -387,6 +387,21 @@ fun HomeScreen(
                     vm.checkUpdate(onToast)
                 },
                 hasTmdbKey = state.hasTmdbKey,
+                wallpaperSource = state.wallpaperSource,
+                onSetWallpaperSource = {
+                    val current = vm.wallpaperSourceInfo().first
+                    nameDialog = NameDialog("Web folder address (blank to turn off). Login: use your phone", current, "Save") { text ->
+                        val (_, user, insecure) = vm.wallpaperSourceInfo()
+                        vm.saveWallpaperSource(text, user, null, insecure)
+                        if (text.isNotBlank()) vm.syncWallpapers(onToast)
+                        true
+                    }
+                },
+                onSyncWallpapers = {
+                    settingsOpen = false
+                    onToast("Syncing wallpapers...")
+                    vm.syncWallpapers(onToast)
+                },
                 onSetTmdbKey = {
                     nameDialog = NameDialog("TMDB API key (paste it)", "", "Save") { text ->
                         vm.setTmdbKey(text, onToast)

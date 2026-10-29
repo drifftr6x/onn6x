@@ -1,6 +1,10 @@
 package com.example.onnlauncher
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import androidx.compose.ui.graphics.asAndroidBitmap
+import java.util.concurrent.ConcurrentHashMap
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.BufferedInputStream
@@ -39,11 +43,14 @@ class WebEditorServer(
         val headers: Map<String, String>,
         val input: InputStream,
         val length: Long,
-    )
+    ) {
+        var consumed = false
+    }
 
     private val prefs = LauncherPrefs(context)
     private val pool = Executors.newCachedThreadPool()
     private val failures = AtomicInteger(0)
+    private val iconCache = ConcurrentHashMap<String, ByteArray>()
 
     @Volatile
     private var socket: ServerSocket? = null
@@ -96,10 +103,14 @@ class WebEditorServer(
             client.soTimeout = 60_000
             val input = BufferedInputStream(client.getInputStream())
             val out = client.getOutputStream()
+            var current: Req? = null
             try {
                 val req = readRequest(input)
+                current = req
                 route(req, out)
             } catch (e: HttpError) {
+                // Read what the browser is still sending, or it sees a dropped connection instead of our message.
+                current?.let { drain(it) }
                 sendJson(out, e.status, JSONObject().put("error", e.message ?: "Error"))
             } catch (e: Exception) {
                 sendJson(out, 500, JSONObject().put("error", e.message ?: "Server error"))
@@ -156,12 +167,13 @@ class WebEditorServer(
         return buffer.toString("ISO-8859-1")
     }
 
-    private fun sendBytes(out: OutputStream, status: Int, type: String, body: ByteArray) {
+    private fun sendBytes(out: OutputStream, status: Int, type: String, body: ByteArray, cache: String = "no-store") {
         val reason = when (status) {
             200 -> "OK"
             400 -> "Bad Request"
             401 -> "Unauthorized"
             404 -> "Not Found"
+            409 -> "Conflict"
             413 -> "Payload Too Large"
             429 -> "Too Many Requests"
             else -> "Error"
@@ -169,7 +181,7 @@ class WebEditorServer(
         val head = "HTTP/1.1 $status $reason\r\n" +
             "Content-Type: $type\r\n" +
             "Content-Length: ${body.size}\r\n" +
-            "Cache-Control: no-store\r\n" +
+            "Cache-Control: $cache\r\n" +
             "Connection: close\r\n\r\n"
         out.write(head.toByteArray(Charsets.ISO_8859_1))
         out.write(body)
@@ -198,6 +210,7 @@ class WebEditorServer(
 
     private fun readBody(req: Req, max: Long): ByteArray {
         if (req.length > max) throw HttpError(413, "Too large")
+        req.consumed = true
         val data = ByteArray(req.length.toInt())
         var read = 0
         while (read < data.size) {
@@ -206,6 +219,89 @@ class WebEditorServer(
             read += n
         }
         return data
+    }
+
+    /** Reads and discards whatever is left of a request body (bounded), so an error reply can get through. */
+    private fun drain(req: Req) {
+        if (req.consumed) return
+        try {
+            var left = minOf(req.length, 40L * 1024 * 1024)
+            val buffer = ByteArray(32 * 1024)
+            while (left > 0) {
+                val n = req.input.read(buffer, 0, minOf(buffer.size.toLong(), left).toInt())
+                if (n < 0) break
+                left -= n
+            }
+        } catch (e: Exception) {
+            // the browser gave up; nothing to send back to
+        }
+    }
+
+    /**
+     * Resumable upload. The browser sends a file in small pieces (offset = where this piece starts, total = file
+     * size). Pieces are appended to name.part; if the connection drops, the browser asks where it got to
+     * (probe=1) or gets a 409 with "have", and carries on from there instead of starting over.
+     */
+    private fun receiveChunk(req: Req, out: OutputStream) {
+        val kind = req.query["kind"].orEmpty()
+        val (folder, extensions, max) = when (kind) {
+            "wallpaper" -> Triple("wallpapers", setOf("jpg", "jpeg", "png", "webp"), MAX_WALLPAPER)
+            "apk" -> Triple("apks", setOf("apk"), MAX_APK)
+            else -> throw HttpError(400, "Unknown upload type")
+        }
+        val dir = context.getExternalFilesDir(folder) ?: throw HttpError(500, "No storage available")
+        dir.mkdirs()
+        val name = safeName(req.query["name"].orEmpty(), extensions)
+        val total = req.query["total"]?.toLongOrNull() ?: throw HttpError(400, "Missing file size")
+        if (total <= 0) throw HttpError(400, "That file is empty")
+        if (total > max) throw HttpError(413, "That file is too large (limit ${max / 1_048_576} MB)")
+
+        val temp = File(dir, "$name.part")
+        val have = if (temp.exists()) temp.length() else 0L
+        if (req.query["probe"] == "1") {
+            sendJson(out, 200, JSONObject().put("ok", true).put("have", have))
+            return
+        }
+        val offset = req.query["offset"]?.toLongOrNull() ?: 0L
+        if (offset == 0L) {
+            temp.delete()
+        } else if (offset != have) {
+            drain(req)
+            sendJson(out, 409, JSONObject().put("error", "Out of step").put("have", have))
+            return
+        }
+        if (req.length <= 0 || req.length > MAX_CHUNK) throw HttpError(400, "Bad piece size")
+        if (offset + req.length > total) throw HttpError(400, "That piece goes past the end of the file")
+
+        req.consumed = true
+        FileOutputStream(temp, true).use { stream ->
+            val buffer = ByteArray(64 * 1024)
+            var left = req.length
+            while (left > 0) {
+                val n = req.input.read(buffer, 0, minOf(buffer.size.toLong(), left).toInt())
+                if (n < 0) throw IOException("Upload cut off")
+                stream.write(buffer, 0, n)
+                left -= n
+            }
+        }
+        val done = offset + req.length == total
+        if (done) {
+            if (temp.length() != total) {
+                temp.delete()
+                throw HttpError(500, "The file came through incomplete. Try again.")
+            }
+            val target = File(dir, name)
+            // Same picture already here under another name? Keep the existing one.
+            val twin = Dedupe.findDuplicate(dir, temp, ignoreName = name)
+            if (twin != null) {
+                temp.delete()
+                ok(out, JSONObject().put("have", total).put("done", true).put("duplicateOf", twin))
+                return
+            }
+            if (target.exists()) target.delete()
+            if (!temp.renameTo(target)) throw HttpError(500, "Couldn't save the file")
+        }
+        ok(out, JSONObject().put("have", offset + req.length).put("done", done))
     }
 
     /** Streams the request body to [target] without holding it in memory. */
@@ -243,7 +339,9 @@ class WebEditorServer(
         if (!req.path.startsWith("/api/")) throw HttpError(404, "Not found")
 
         if (failures.get() >= MAX_FAILURES) throw HttpError(429, "Locked after too many wrong PINs. Restart the editor on the TV.")
-        val given = req.headers["x-pin"].orEmpty()
+        // <img> tags can't send headers, so pictures (and only pictures) may carry the PIN in the address.
+        val pinInAddress = req.method == "GET" && (req.path == "/api/icon" || req.path == "/api/wallpaper/thumb")
+        val given = req.headers["x-pin"] ?: if (pinInAddress) req.query["pin"].orEmpty() else ""
         if (!MessageDigest.isEqual(given.toByteArray(), pin.toByteArray())) {
             failures.incrementAndGet()
             throw HttpError(401, "Wrong PIN")
@@ -252,6 +350,36 @@ class WebEditorServer(
 
         when (req.path) {
             "/api/state" -> sendJson(out, 200, stateJson())
+            "/api/ping" -> ok(out, JSONObject().put("left", vm.editorSecondsLeft()))
+            "/api/extend" -> ok(out, JSONObject().put("left", vm.extendEditor()))
+
+            "/api/icon" -> {
+                val pkg = requirePackage(req.query["pkg"].orEmpty())
+                val bytes = iconCache[pkg] ?: run {
+                    val app = vm.snapshotApps().firstOrNull { it.packageName == pkg } ?: throw HttpError(404, "No such app")
+                    val png = ByteArrayOutputStream()
+                    app.icon.asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, png)
+                    png.toByteArray().also { iconCache[pkg] = it }
+                }
+                sendBytes(out, 200, "image/png", bytes, "private, max-age=3600")
+            }
+            "/api/wallpaper/thumb" -> {
+                val dir = context.getExternalFilesDir("wallpapers") ?: throw HttpError(404, "Not found")
+                val file = File(dir, req.query["name"].orEmpty())
+                if (file.parentFile?.canonicalPath != dir.canonicalPath || !file.isFile) throw HttpError(404, "Not found")
+                val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeFile(file.path, bounds)
+                var sample = 1
+                while (bounds.outWidth / (sample * 2) >= 480) sample *= 2
+                val bitmap = BitmapFactory.decodeFile(file.path, BitmapFactory.Options().apply { inSampleSize = sample })
+                    ?: throw HttpError(404, "Not a picture")
+                val jpeg = ByteArrayOutputStream()
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 72, jpeg)
+                bitmap.recycle()
+                sendBytes(out, 200, "image/jpeg", jpeg.toByteArray(), "private, max-age=600")
+            }
+
+            "/api/upload" -> receiveChunk(req, out)
             "/api/backup" -> sendBytes(out, 200, "application/json; charset=utf-8", prefs.exportJson().toByteArray())
 
             "/api/restore" -> {
@@ -335,6 +463,20 @@ class WebEditorServer(
                 ok(out)
             }
 
+            "/api/wallpapers/source" -> {
+                val body = readJson(req)
+                val pass = if (body.has("pass") && !body.isNull("pass") && body.optString("pass").isNotEmpty()) body.optString("pass") else null
+                vm.saveWallpaperSource(body.optString("url"), body.optString("user"), pass, body.optBoolean("insecure"))
+                ok(out)
+            }
+            "/api/wallpapers/sync" -> {
+                val latch = java.util.concurrent.CountDownLatch(1)
+                var message = ""
+                vm.syncWallpapers { message = it; latch.countDown() }
+                latch.await(120, java.util.concurrent.TimeUnit.SECONDS)
+                if (message.isBlank()) throw HttpError(504, "Still syncing. Check back in a minute.")
+                ok(out, JSONObject().put("message", message))
+            }
             "/api/tmdb" -> {
                 val message = vm.saveTmdbKey(readJson(req).optString("key"))
                 if (!message.startsWith("TMDB connected")) throw HttpError(400, message)
@@ -541,6 +683,12 @@ class WebEditorServer(
             .put("options", options)
             .put("autostart", JSONObject().put("pkg", prefs.autoStartPackage()).put("delay", prefs.autoStartDelay()))
             .put("tmdb", JSONObject().put("hasKey", prefs.tmdbKey().isNotBlank()))
+            .put(
+                "wallpaperSource",
+                JSONObject().put("url", prefs.wpUrl()).put("user", prefs.wpUser())
+                    .put("hasPass", prefs.wpPass().isNotBlank()).put("insecure", prefs.wpInsecure())
+                    .put("status", prefs.wpStatus()),
+            )
             .put("ha", JSONObject().put("url", prefs.haUrl()).put("hasToken", prefs.haToken().isNotBlank()))
             .put("tiles", tiles)
             .put("wallpapers", listFiles("wallpapers", setOf("jpg", "jpeg", "png", "webp")))
@@ -564,6 +712,7 @@ class WebEditorServer(
         const val MAX_IMAGE = 15L * 1024 * 1024
         const val MAX_WALLPAPER = 30L * 1024 * 1024
         const val MAX_APK = 600L * 1024 * 1024
+        const val MAX_CHUNK = 8L * 1024 * 1024
         val PACKAGE_PATTERN = Regex("[A-Za-z0-9_.]{1,200}")
     }
 }

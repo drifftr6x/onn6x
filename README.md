@@ -137,6 +137,16 @@ This product uses the TMDB API but is not endorsed or certified by TMDB. Movie a
 - **Ad-blocking DNS (AdGuard)** (Settings): switches the box's Private DNS to AdGuard to block many ad and tracker domains. Needs a one-time grant from your PC: `adb shell pm grant com.example.onnlauncher android.permission.WRITE_SECURE_SETTINGS`. It does not block ads inside YouTube. Turn it off from the same Settings entry.
 - **Check for updates** (Settings): looks at the newest GitHub release of this project and tells you if it is newer than the installed version.
 
+## Wallpapers from a NAS or web folder
+
+Settings > "Wallpaper source (NAS)" (or the phone editor, which also takes a username and password) points the launcher at a folder on your network. Its pictures are copied to the box and rotate as wallpapers.
+
+- Works with a **WebDAV** folder (Synology, QNAP, Nextcloud, TrueNAS, Apache or nginx with DAV), a **plain web folder** whose index page lists its files, or a single **direct picture link**. `smb://` shares are not supported; turn on WebDAV or HTTP for the folder on the NAS instead.
+- Only jpg, png and webp files directly inside the folder are used, up to 60 files of at most 20 MB each.
+- Copies are kept on the box (as `net_...` files), so wallpapers keep working when the NAS is off. It syncs at start, every six hours, and with "Sync wallpapers now". Pictures removed from the folder are removed from the box. Pictures you add by hand are never touched.
+- A login can go in the phone editor or in the address itself: `http://name:password@nas/photos/`. The password is not included in layout backups.
+- A NAS with a self-signed HTTPS certificate needs "Accept a self-signed certificate" ticked in the phone editor. Only use that on your own network.
+
 ## Screensaver
 
 The launcher has its own idle screensaver (your wallpaper photos or a theme-colored gradient, the clock, the date and the weather). It starts after Settings > "Screensaver after" and only runs while the launcher is on screen.
