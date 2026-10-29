@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-feature
         android:name="android.software.leanback"
@@ -11,7 +12,9 @@
     <!-- Weather only (Open-Meteo). Everything else works offline. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Needed to list every installed app (Kodi, emulators, sideloaded apps...) -->
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
     <!-- Needed for the "Uninstall" action in the long-press menu -->
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
     <!-- Needed for the APK installer -->
@@ -20,7 +23,9 @@
     <!-- Keeps Wi-Fi and the CPU awake while the phone editor is running, so uploads don't stall -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Optional: lets the ad-blocking DNS toggle work after a one-time "adb shell pm grant" -->
-    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
+    <uses-permission
+        android:name="android.permission.WRITE_SECURE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
 
     <application
         android:allowBackup="true"
