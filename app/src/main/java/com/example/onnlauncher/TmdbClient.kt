@@ -4,6 +4,7 @@ import android.graphics.BitmapFactory
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import org.json.JSONObject
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -170,17 +171,66 @@ object TmdbClient {
         ""
     }
 
+    /**
+     * Where downloaded pictures are kept, so rows fill instantly after a restart. Set once at startup;
+     * null means no disk cache. TMDB never changes the picture behind a path, so files never go stale.
+     */
+    @Volatile var imageDir: File? = null
+    private const val IMAGE_DIR_MAX_BYTES = 40L * 1024 * 1024
+    private val trimLock = Any()
+
     /** [size] is a TMDB image width such as "w185" or "w342". */
-    fun image(path: String, size: String): ImageBitmap? = try {
-        val connection = URL("https://image.tmdb.org/t/p/$size$path").openConnection() as HttpURLConnection
+    fun image(path: String, size: String): ImageBitmap? {
+        if (path.isBlank()) return null
+        val dir = imageDir
+        // Only safe characters in the file name; TMDB paths look like "/abc123.jpg".
+        val file = dir?.let { File(it, size + "_" + path.filter { c -> c.isLetterOrDigit() || c in "._-" }) }
+        if (file != null && file.isFile) {
+            val cached = BitmapFactory.decodeFile(file.path)
+            if (cached != null) {
+                file.setLastModified(System.currentTimeMillis())
+                return cached.asImageBitmap()
+            }
+            file.delete()
+        }
+        val bytes = download("https://image.tmdb.org/t/p/$size$path") ?: return null
+        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return null
+        if (dir != null && file != null) save(dir, file, bytes)
+        return bitmap.asImageBitmap()
+    }
+
+    private fun download(url: String): ByteArray? = try {
+        val connection = URL(url).openConnection() as HttpURLConnection
         connection.connectTimeout = 8_000
         connection.readTimeout = 8_000
         try {
-            connection.inputStream.use { BitmapFactory.decodeStream(it)?.asImageBitmap() }
+            connection.inputStream.use { it.readBytes() }
         } finally {
             connection.disconnect()
         }
     } catch (e: Exception) {
         null
+    }
+
+    /** Writes via a temp file so a half-written picture is never read, then trims the oldest files. */
+    private fun save(dir: File, file: File, bytes: ByteArray) {
+        try {
+            dir.mkdirs()
+            val temp = File(dir, file.name + ".tmp" + Thread.currentThread().id)
+            temp.writeBytes(bytes)
+            if (!temp.renameTo(file)) temp.delete()
+            synchronized(trimLock) {
+                val files = dir.listFiles()?.filter { it.isFile } ?: return
+                var total = files.sumOf { it.length() }
+                if (total <= IMAGE_DIR_MAX_BYTES) return
+                for (old in files.sortedBy { it.lastModified() }) {
+                    if (total <= IMAGE_DIR_MAX_BYTES * 3 / 4) break
+                    total -= old.length()
+                    old.delete()
+                }
+            }
+        } catch (e: Exception) {
+            // A full or missing cache only means downloading again next time.
+        }
     }
 }
