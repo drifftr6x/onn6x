@@ -776,7 +776,7 @@ fun PhoneEditorDialog(
         Spacer(Modifier.size(4.dp))
         Text("PIN  ${info.pin}", color = Color(0xFFFF5252), fontSize = 30.sp)
         Text(
-            "It stops by itself after 30 minutes, or when you leave the launcher.",
+            "It stops by itself after an hour (the phone can extend it), or when you leave the launcher.",
             color = LocalLauncherTheme.current.subtle,
             fontSize = 13.sp,
             modifier = Modifier.padding(top = 10.dp),

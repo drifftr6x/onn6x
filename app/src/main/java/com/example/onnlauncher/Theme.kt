@@ -38,7 +38,7 @@ data class LauncherTheme(
     /** Draws the first row inside a frosted rounded bar, like a dock. */
     val dock: Boolean = false,
     val dockColor: Color = Color(0x33FFFFFF),
-    /** Optional drawn background: "bricks", "lattice" or "swirl". See ThemePattern. */
+    /** Optional drawn background: "bricks", "lattice", "meadow" or "swirl". See ThemePattern. */
     val pattern: String = "",
 )
 

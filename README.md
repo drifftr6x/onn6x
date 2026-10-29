@@ -43,16 +43,19 @@ A hackable Android TV home screen for the Onn 4K Pro, in Kotlin with Compose for
 
 ## Build
 1. Install Android Studio, open this folder, let Gradle sync (it offers to install Android SDK 34).
-2. Build > Build Bundle(s) / APK(s) > Build APK(s). APK: `app/build/outputs/apk/debug/app-debug.apk`.
+2. Build the release APK: `.\gradlew.bat assembleRelease`. APK: `app\build\outputs\apk\release\app-release.apk`.
+   Use the release APK, not a debug build: a debug APK has a lower version code and fails to install over the
+   release with `INSTALL_FAILED_VERSION_DOWNGRADE`.
 
 ## Install
 
 **Ready-made APK:** download `app-release.apk` from the [Releases](https://github.com/drifftr6x/onn6x/releases) page and install it with `adb install -r app-release.apk` (turn on Developer options and ADB debugging on the box first). The release APK is signed with a debug key, so each new version installs over the old one without losing your settings. Settings > "Check for updates" compares the installed version with the newest release here.
 
 ```
-adb install app-debug.apk
+adb install -r "C:\onn-launcher\app\build\outputs\apk\release\app-release.apk"
 adb shell am start -n com.example.onnlauncher/.MainActivity
 ```
+Use the full path to the APK; a relative path can fail with "No such file".
 That opens it like any app. Home doesn't change until you enable the service below.
 
 ## Turn on the accessibility service
@@ -85,8 +88,8 @@ it switches itself off if it bounces 5 times in 10 seconds; restore the old acce
 - **Phone editor:** Settings > Edit from your phone (or the "Phone editor" tile in Quick settings). The TV shows
   an address like `http://192.168.1.50:8080` and a 6-digit PIN. Open it on a phone or laptop on the same Wi-Fi.
   Tabs: Rows (add, rename, reorder, put apps in rows), Apps (rename, tile picture, hide), Look (settings,
-  weather city, auto-start), Smart home, Files (wallpapers, APKs), Backup. It stops after 30 minutes or when you leave
-  the launcher, and locks after 8 wrong PINs. Plain http, home network only.
+  weather city, auto-start), Smart home, Files (wallpapers, APKs), Backup. It stops after an hour (tap the status
+  pill on the phone to extend it) or when you leave the launcher, and locks after 8 wrong PINs. Plain http, home network only.
 - **Rename apps and custom tile pictures:** hold OK on a tile > Rename app. Pictures: phone editor > Apps >
   Tile picture, or `adb push com.some.app.png /sdcard/Android/data/com.example.onnlauncher/files/tiles/`
   (file name = package name; 16:9 fits best).
@@ -164,7 +167,6 @@ adb push photo.jpg /sdcard/Android/data/com.example.onnlauncher/files/wallpapers
 One picture stays put; several rotate. They also play full-screen during the idle screensaver.
 
 ## Known limits and untested guesses
-- **Never compiled.** The first build will likely show a few errors.
 - **Remote buttons:** the Netflix/YouTube/Disney+/Paramount+ and FREE TV buttons may be handled by the system
   before any app or service sees them. Remapping only works for buttons Android passes along. The
   "press a button" step tells you if nothing arrives. `com.gretzky.GlobalKey` in your package list looks like
@@ -178,8 +180,7 @@ One picture stays put; several rotate. They also play full-screen during the idl
 - Some settings screens (Wi-Fi, Bluetooth, Developer options) may not exist under those exact names on
   Google TV. If one doesn't open you'll see a "Couldn't open that" message.
 - Weather needs internet. Everything else works offline.
-- **Phone editor, APK installer, smart home and auto-start are also uncompiled and untested.** The wireless
-  debugging line in Device info may read "Unknown" on this build. Auto-start uses Android's boot counter and
+- The wireless debugging line in Device info may read "Unknown" on this build. Auto-start uses Android's boot counter and
   only fires within 10 minutes of boot.
 - A sideloaded APK still needs you to confirm the install on the TV.
 

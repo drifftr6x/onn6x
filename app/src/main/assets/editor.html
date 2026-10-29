@@ -583,7 +583,7 @@ function viewBackup(v) {
     f.text().then(function (t) { return act(api("/api/restore", t, true), "Layout restored"); });
   };
   v.appendChild(h("div", { class: "card" }, h("h2", null, "Backup and restore"),
-    h("p", { class: "dim" }, "Rows, hidden apps, names, settings and button mappings. The Home Assistant token is never included."),
+    h("p", { class: "dim" }, "Rows, hidden apps, names, settings and button mappings. Secrets (the TMDB key, the Home Assistant token and the NAS password) are never included; restoring keeps the ones already on the box."),
     h("div", { class: "row" },
       h("button", { class: "primary", onclick: function () {
         fetch("/api/backup", { headers: { "X-Pin": pin } }).then(function (r) { return r.blob(); }).then(function (b) {

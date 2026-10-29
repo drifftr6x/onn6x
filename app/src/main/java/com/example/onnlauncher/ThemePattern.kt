@@ -18,8 +18,8 @@ import kotlin.math.sin
 
 /**
  * Plain shapes drawn behind the home screen for themes that set a [LauncherTheme.pattern]:
- * "bricks" (sky, clouds and a brick floor), "lattice" (a faint diamond grid with a golden glow)
- * and "swirl" (glowing spiral arms). Original drawings made of circles, lines and rectangles.
+ * "bricks" (sky, clouds and a brick floor), "lattice" (a faint diamond grid with a golden glow),
+ * "meadow" (sun, far mountains and rolling hills) and "swirl" (glowing spiral arms). Original drawings made of circles, lines and rectangles.
  */
 @Composable
 fun ThemePattern(pattern: String, modifier: Modifier = Modifier) {
